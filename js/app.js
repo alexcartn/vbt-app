@@ -2,20 +2,26 @@ import { Tracker } from './signal.js';
 import { Sensor, bleSupported } from './ble.js';
 import { generateSet } from './sim.js';
 import * as store from './store.js';
-import { EXERCISES, bestPerLoad, fitProfile, loadForVelocity } from './profile.js';
-import { activeReps, setStats, shouldStop, speechText, rawCsv } from './feedback.js';
-import { unlockAudio, beepRep, beepStop, speak } from './audio.js';
+import { EXERCISES, MVT_DEFAULT, bestPerLoad, fitProfile, loadForVelocity } from './profile.js';
+import { activeReps, setStats, shouldStop, rawCsv } from './feedback.js';
+import { sessions, progress, loadsUsed, setSummary } from './history.js';
+import { unlockAudio, beepRep, beepStop } from './audio.js';
 
 const $ = s => document.querySelector(s);
 const fmt = (v, d = 2) => (v == null || isNaN(v) ? '-' : v.toFixed(d).replace('.', ','));
 const kg = x => (Math.round(x * 2) / 2).toString().replace('.', ',');
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const dateLong = d => new Date(d + 'T12:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+const dateShort = d => `${d.slice(8)}/${d.slice(5, 7)}`;
 
 let db = store.load();
+const prof = () => db.profiles.find(p => p.id === db.activeProfile);
 const tracker = new Tracker();
 let gyro = [0, 0, 0], sensor = null, connected = false, simTimer = null, lastState = 'calib', wakeLock = null;
 const S = {
   tab: 'seance', exercise: db.last.exercise, load: db.last.load,
   recording: false, reps: [], selected: null, fresh: null, hz: 0, rate: { n: 0, t0: 0 }, msg: '',
+  h: { view: 'list', ex: db.last.exercise, metric: 'e1rm', load: null, setId: null, sel: null },   // onglet Historique
   setId: null,                       // id de la série enregistrée affichée (pour répercuter les corrections de reps)
   raw: [], pre: [], rawMeta: null    // échantillons bruts de la dernière série (export CSV) et 1,5 s qui précède
 };
@@ -62,10 +68,8 @@ function addReps(reps) {
   if (navigator.vibrate) navigator.vibrate(stop ? [200, 100, 200, 100, 200] : 30);
   if (stop) {                                           // seuil de perte de vitesse atteint : alerte distincte d'un bip de rep
     if (cfg.sound) beepStop();
-    if (cfg.voice) speak(`Arrête. Moins ${Math.round(st.loss * 100)} pour cent`);
   } else if (st.last) {
     if (cfg.sound) beepRep(zone(st.last.mcv, st.best));
-    if (cfg.voice) speak(speechText(st.last.mcv));
   }
   renderSeance();
   S.fresh = null;
@@ -104,7 +108,7 @@ function exportRaw() {
   download(`vbt_${m.exercise}_${m.load}kg_${stamp(m.t)}.csv`, rawCsv(S.raw.map((r, i) => [i, ...r]), { ...m, hz: Math.round(S.hz || 100) }), 'text/csv');
 }
 function exportHistory() {
-  download(`vbt_historique_${stamp(Date.now())}.json`, JSON.stringify({ exportedAt: new Date().toISOString(), sets: db.sets, mvt: db.mvt }, null, 1), 'application/json');
+  download(`vbt_historique_${stamp(Date.now())}.json`, JSON.stringify({ exportedAt: new Date().toISOString(), profiles: db.profiles, sets: db.sets }, null, 1), 'application/json');
 }
 
 // ---------- connexion ----------
@@ -136,10 +140,10 @@ function endSet() {
   S.setId = null;
   if (S.reps.length) {
     S.setId = Date.now();
-    db.sets.push({ id: S.setId, t: S.setId, exercise: S.exercise, load: S.load, reps: S.reps });
+    db.sets.push({ id: S.setId, t: S.setId, exercise: S.exercise, load: S.load, profileId: db.activeProfile, reps: S.reps });
     db.last = { exercise: S.exercise, load: S.load };
     store.save(db);
-    toast(`Série enregistrée : ${S.reps.length} reps à ${kg(S.load)} kg`);
+    toast(`Série de ${prof().name} enregistrée : ${S.reps.length} reps à ${kg(S.load)} kg`);
   } else toast('Aucune rep détectée, série non enregistrée.');
   S.selected = S.reps.length ? S.reps.length - 1 : null;
   renderSeance();
@@ -176,8 +180,8 @@ function renderStatus() {
   el.className = 'chip ' + (connected ? (tracker.state === 'calib' ? 'warn' : 'ok') : '');
 }
 
-function barsSvg() {
-  const reps = S.reps, n = reps.length;
+function barsSvg(reps = S.reps, selected = S.selected, fresh = S.fresh, act = 'sel') {
+  const n = reps.length;
   if (!n) return `<p class="empty">${S.recording ? 'Fais ta première rep. Elle apparaît ici dès qu\'elle est terminée.' : 'Les reps de la série s\'affichent ici.'}</p>`;
   const best = setStats(reps).best || Math.max(...reps.map(r => r.mcv)), top = Math.max(1, best * 1.12);
   const W = 320, H = 150, bw = Math.min(46, (W - 10) / n - 8), gap = (W - n * bw) / (n + 1);
@@ -186,19 +190,19 @@ function barsSvg() {
     const h = Math.max(4, (r.mcv / top) * (H - 18)), x = gap + i * (bw + gap), y = H - h;
     // rep ratée : contour pointillé et valeur barrée (jamais la couleur seule)
     const cls = r.failed ? 'failed' : `z-${zone(r.mcv, best)}`;
-    out += `<rect class="bar ${cls}${i === S.selected ? ' sel' : ''}${i === S.fresh ? ' fresh' : ''}" data-act="sel" data-i="${i}" x="${x}" y="${y}" width="${bw}" height="${h}"/>`;
+    out += `<rect class="bar ${cls}${i === selected ? ' sel' : ''}${i === fresh ? ' fresh' : ''}" data-act="${act}" data-i="${i}" x="${x}" y="${y}" width="${bw}" height="${h}"/>`;
     out += `<text class="bv${r.failed ? ' fail' : ''}" x="${x + bw / 2}" y="${y - 6}">${fmt(r.mcv)}</text><text class="bn" x="${x + bw / 2}" y="${H + 16}">${i + 1}</text>`;
   });
   return out + `<line class="base" x1="0" y1="${H}" x2="${W}" y2="${H}"/></svg>`;
 }
 
-function detailHtml() {
-  const r = S.reps[S.selected];
+function detailHtml(reps = S.reps, selected = S.selected, acts = ['fail', 'delrep']) {
+  const r = reps[selected];
   if (!r) return '';
   const W = 300, H = 80, max = Math.max(...r.curve, 0.1);
   const pts = r.curve.map((v, i) => `${(i / (r.curve.length - 1)) * W},${H - 4 - (Math.max(0, v) / max) * (H - 12)}`).join(' ');
   return `<section class="detail">
-    <h2 class="cap">Rep ${S.selected + 1}${r.failed ? ' · ratée, non comptée' : ''} · courbe de vitesse</h2>
+    <h2 class="cap">Rep ${selected + 1}${r.failed ? ' · ratée, non comptée' : ''} · courbe de vitesse</h2>
     <svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Courbe de vitesse de la rep"><polyline class="curve" points="${pts}"/></svg>
     <dl class="facts">
       <div><dt>Moyenne</dt><dd>${fmt(r.mcv)}<small>m/s</small></dd></div>
@@ -207,8 +211,8 @@ function detailHtml() {
       <div><dt>Amplitude</dt><dd>${Math.round(r.rom * 100)}<small>cm</small></dd></div>
     </dl>
     <div class="repedit">
-      <button class="btn alt sm" data-act="fail">${r.failed ? 'Rep valide' : 'Rep ratée'}</button>
-      <button class="btn alt sm" data-act="delrep">Supprimer</button>
+      <button class="btn alt sm" data-act="${acts[0]}">${r.failed ? 'Rep valide' : 'Rep ratée'}</button>
+      <button class="btn alt sm" data-act="${acts[1]}">Supprimer</button>
     </div></section>`;
 }
 
@@ -221,7 +225,7 @@ function renderSeance() {
   const setup = S.recording ? '' : `
     <section class="opts" aria-label="Retour pendant la série">
       <div class="optrow"><span class="cap" id="lossLbl">Alerte d'arrêt</span><div class="seg" role="group" aria-labelledby="lossLbl">${seg('loss', [[0, 'Off'], [0.1, '10 %'], [0.2, '20 %'], [0.3, '30 %']], v => cfg.lossStop === v)}</div></div>
-      <div class="optrow"><span class="cap" id="fbLbl">Retour</span><div class="seg" role="group" aria-labelledby="fbLbl">${seg('tog', [['sound', 'Son'], ['voice', 'Voix']], v => cfg[v])}</div></div>
+      <div class="optrow"><span class="cap" id="fbLbl">Retour</span><div class="seg" role="group" aria-labelledby="fbLbl">${seg('tog', [['sound', 'Son']], v => cfg[v])}</div></div>
     </section>
     <div class="ex" role="group" aria-label="Mouvement">${Object.entries(EXERCISES).map(([k, n]) => `<button data-act="ex" data-v="${k}" class="${k === S.exercise ? 'on' : ''}" aria-pressed="${k === S.exercise}">${n}</button>`).join('')}</div>
     <div class="stepper">
@@ -236,7 +240,7 @@ function renderSeance() {
     : `<p class="delta quiet">${S.recording ? 'En attente de la première rep' : 'Règle la charge, puis démarre la série.'}</p>`)
     + (stop ? `<p class="stopbar" role="alert">Perte de ${loss} % : arrête la série</p>` : '');
   $('#app').innerHTML = `
-    <header class="top"><span id="chip" class="chip"></span>${S.recording ? `<span class="ctx">${EXERCISES[S.exercise]} · ${kg(S.load)} kg</span>` : ''}</header>
+    <header class="top"><span id="chip" class="chip"></span>${S.recording ? `<span class="ctx">${esc(prof().name)} · ${EXERCISES[S.exercise]} · ${kg(S.load)} kg</span>` : whoBar()}</header>
     ${setup}
     <section class="reading" aria-live="polite">
       <p class="cap">${last ? `Rep ${lastNo} · vitesse moyenne` : 'Vitesse moyenne'}</p>
@@ -255,7 +259,42 @@ function renderSeance() {
   renderStatus();
 }
 
-function todaySets(ex, day) { return db.sets.filter(s => s.exercise === ex && store.dayKey(s.t) === day); }
+// ---------- profils ----------
+function whoBar() {
+  return `<label class="who"><span class="cap">Profil</span><select id="profSel" aria-label="Profil">${db.profiles.map(p => `<option value="${p.id}"${p.id === db.activeProfile ? ' selected' : ''}>${esc(p.name)}</option>`).join('')}<option value="__new">+ Nouveau profil…</option></select></label>`;
+}
+function cleanName(raw, exceptId) {
+  const name = (raw || '').trim().slice(0, 24);
+  if (!name) return null;
+  if (db.profiles.some(p => p.id !== exceptId && p.name.toLowerCase() === name.toLowerCase())) { toast(`Le profil « ${name} » existe déjà.`); return null; }
+  return name;
+}
+function createProfile() {
+  const name = cleanName(prompt('Nom du nouveau profil'));
+  if (name) {
+    const p = { id: store.newId(), name, mvt: { ...MVT_DEFAULT } };
+    db.profiles.push(p); db.activeProfile = p.id; store.save(db);
+    toast(`Profil « ${name} » créé`);
+  }
+  render();
+}
+function renameProfile(id) {
+  const p = db.profiles.find(x => x.id === id); if (!p) return;
+  const name = cleanName(prompt('Nouveau nom', p.name), id);
+  if (name) { p.name = name; store.save(db); }
+  render();
+}
+function deleteProfile(id) {
+  const n = db.sets.filter(s => s.profileId === id).length;
+  if (n || db.profiles.length < 2) return;               // on ne supprime jamais un profil qui a des séries, ni le dernier
+  const p = db.profiles.find(x => x.id === id);
+  if (!confirm(`Supprimer le profil « ${p.name} » ?`)) return;
+  db.profiles = db.profiles.filter(x => x.id !== id);
+  if (db.activeProfile === id) db.activeProfile = db.profiles[0].id;
+  store.save(db); render();
+}
+
+function todaySets(ex, day) { return db.sets.filter(s => s.profileId === db.activeProfile && s.exercise === ex && store.dayKey(s.t) === day); }
 
 function profileSvg(pts, fit, mvt) {
   const W = 320, H = 200, L = 6, B = 40, T = 14, R = 10;
@@ -276,7 +315,7 @@ function profileSvg(pts, fit, mvt) {
 }
 
 function renderProfil() {
-  const day = store.dayKey(Date.now()), ex = S.exercise, mvt = db.mvt[ex];
+  const day = store.dayKey(Date.now()), ex = S.exercise, mvt = prof().mvt[ex];
   const pts = bestPerLoad(todaySets(ex, day)), fit = fitProfile(pts, mvt);
   let body;
   if (!pts.length) body = `<p class="empty">Aucune série aujourd'hui pour ce mouvement. Fais une montée en charge dans l'onglet Séance : 3 ou 4 charges, 1 ou 2 reps rapides chacune.</p>`;
@@ -287,27 +326,97 @@ function renderProfil() {
       (fit.ok && fit.warnings.length ? fit.warnings.map(w => `<p class="note"><strong>Attention.</strong> ${w}</p>`).join('') : '') +
       (sug.length ? `<section class="block"><h2 class="cap">Charge pour une vitesse cible</h2><table>${sug.map(x => `<tr><td>${fmt(x.v)} m/s</td><td>${kg(Math.round(x.l / 2.5) * 2.5)} kg</td></tr>`).join('')}</table></section>` : '');
   }
-  $('#app').innerHTML = `<header class="top"><h1>Profil</h1></header>
+  $('#app').innerHTML = `<header class="top"><h1>1RM du jour</h1>${whoBar()}</header>
     <div class="ex" role="group" aria-label="Mouvement">${Object.entries(EXERCISES).map(([k, n]) => `<button data-act="ex" data-v="${k}" class="${k === ex ? 'on' : ''}" aria-pressed="${k === ex}">${n}</button>`).join('')}</div>
     ${body}
     <section class="block"><div class="setting"><label class="cap" for="mvtIn">Vitesse minimale<br>(dernière rep réussie)</label><input id="mvtIn" type="number" step="0.01" inputmode="decimal" value="${mvt}"></div>
       <p class="hint" style="margin-top:8px">Valeurs de départ tirées de la littérature : squat 0,30 · bench 0,17 · deadlift 0,15 m/s. À ajuster avec tes propres échecs.</p></section>`;
 }
 
+// ---------- historique : courbe de progression par exercice, séances, détail d'une série ----------
+function lineSvg(pts, f) {
+  const W = 320, H = 170, L = 16, R = 16, T = 24, B = 30, n = pts.length;
+  const vs = pts.map(p => p.v), lo = Math.min(...vs), hi = Math.max(...vs), pad = (hi - lo) * 0.3 || hi * 0.05 || 0.05, y0 = lo - pad, y1 = hi + pad;
+  const X = i => (n === 1 ? W / 2 : L + (i * (W - L - R)) / (n - 1)), Y = v => T + (1 - (v - y0) / (y1 - y0)) * (H - T - B);
+  const labelled = i => n <= 6 || i === 0 || i === n - 1 || pts[i].v === hi;
+  let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Courbe de progression, une séance par point">`;
+  s += `<line class="base" x1="${L}" y1="${H - B + 8}" x2="${W - R}" y2="${H - B + 8}"/>`;
+  if (n > 1) s += `<polyline class="line" points="${pts.map((p, i) => `${X(i)},${Y(p.v)}`).join(' ')}"/>`;
+  pts.forEach((p, i) => {
+    s += `<circle class="dot${i === n - 1 ? ' last' : ''}" cx="${X(i)}" cy="${Y(p.v)}" r="${i === n - 1 ? 7 : 5}"/>`;
+    if (labelled(i)) s += `<text class="bv" x="${X(i)}" y="${Y(p.v) - 13}">${f(p.v)}</text>`;
+    if (n <= 5 || i === 0 || i === n - 1) s += `<text class="bn" x="${X(i)}" y="${H - 6}">${dateShort(p.day)}</text>`;
+  });
+  return s + '</svg>';
+}
+
 function renderHisto() {
-  const days = [...new Set(db.sets.map(s => store.dayKey(s.t)))].sort().reverse();
-  let body = days.length ? '' : `<p class="empty">Pas encore de série enregistrée. Elles apparaissent ici dès que tu termines une série.</p>`;
-  for (const d of days) {
-    body += `<h2 class="day">${new Date(d + 'T12:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}</h2>`;
-    for (const ex of Object.keys(EXERCISES)) {
-      const sets = todaySets(ex, d); if (!sets.length) continue;
-      const fit = fitProfile(bestPerLoad(sets), db.mvt[ex]);
-      body += `<section class="block"><h3 class="cap" style="margin:0">${EXERCISES[ex]}${fit.ok ? ` · 1RM du jour ≈ ${kg(fit.e1rm)} kg` : ''}</h3>` +
-        sets.map(s => `<div class="hrow"><div><b>${kg(s.load)} kg × ${activeReps(s.reps).length}${s.reps.some(r => r.failed) ? ' · ratée' : ''}</b><span>${s.reps.map(r => r.failed ? `<s>${fmt(r.mcv)}</s>` : fmt(r.mcv)).join(' · ')} m/s</span></div><button class="x" data-act="del" data-id="${s.id}" aria-label="Supprimer cette série">×</button></div>`).join('') + '</section>';
-    }
+  return S.h.view === 'set' && hset() ? renderHistoSet() : renderHistoList();
+}
+
+function renderHistoList() {
+  const h = S.h, p = prof(), ex = h.ex;
+  const sess = sessions(db.sets, ex, p.id, p.mvt), loads = loadsUsed(sess);
+  if (h.load == null || !loads.includes(h.load)) h.load = loads[0] ?? null;
+  const metric = h.metric === 'vel' && h.load != null ? 'vel' : 'e1rm';
+  const pts = progress(sess, metric, h.load);
+  const fv = metric === 'e1rm' ? v => kg(v) : v => fmt(v), unit = metric === 'e1rm' ? 'kg' : 'm/s';
+  let chart;
+  if (!sess.length) chart = `<p class="empty">Aucune série de ${esc(p.name)} en ${EXERCISES[ex].toLowerCase()}. Les séries apparaissent ici dès que tu en termines une.</p>`;
+  else {
+    const last = pts[pts.length - 1], first = pts[0], diff = last && last !== first ? last.v - first.v : null;
+    const delta = diff == null ? '' : `${diff >= 0 ? '+' : '−'}${metric === 'e1rm' ? kg(Math.abs(diff)) : fmt(Math.abs(diff))} ${unit} depuis le ${dateShort(first.day)}`;
+    chart = `<div class="seg" role="group" aria-label="Courbe affichée">
+        <button data-act="hmetric" data-v="e1rm" class="${metric === 'e1rm' ? 'on' : ''}" aria-pressed="${metric === 'e1rm'}">1RM estimé</button>
+        <button data-act="hmetric" data-v="vel" class="${metric === 'vel' ? 'on' : ''}" aria-pressed="${metric === 'vel'}">Vitesse</button></div>` +
+      (metric === 'vel' ? `<div class="setting"><label class="cap" for="hLoad">Charge</label><select id="hLoad" class="sel">${loads.map(l => `<option value="${l}"${l === h.load ? ' selected' : ''}>${kg(l)} kg</option>`).join('')}</select></div>` : '') +
+      (pts.length ? `<section class="reading"><p class="cap">${metric === 'e1rm' ? '1RM estimé' : `Meilleure vitesse à ${kg(h.load)} kg`} · dernière séance</p>
+          <p class="stat">${fv(last.v)}<span class="unit">${unit}</span></p><p class="delta quiet">${delta || (pts.length === 1 ? 'Une seule séance : la courbe se trace à partir de la 2e.' : '')}</p></section>${lineSvg(pts, fv)}`
+        : `<p class="note"><strong>Pas de point.</strong> ${metric === 'e1rm' ? 'Le 1RM estimé demande au moins 2 charges différentes dans une même séance.' : 'Aucune série à cette charge.'}</p>`);
   }
-  $('#app').innerHTML = `<header class="top"><h1>Historique</h1></header>${body}` +
+  let list = '';
+  for (const s of [...sess].reverse()) {
+    list += `<h2 class="day">${dateLong(s.day)}</h2><p class="cap">${s.e1rm != null ? `1RM du jour ≈ ${kg(s.e1rm)} kg · ` : ''}${s.sets.length} série${s.sets.length > 1 ? 's' : ''} · ${s.nReps} reps · volume ${Math.round(s.volume)} kg</p>`;
+    list += `<div class="hlist">` + s.sets.map(x => {
+      const m = setSummary(x), time = new Date(x.t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+      return `<button class="hset" data-act="hopen" data-id="${x.id}"><span><b>${kg(x.load)} kg × ${m.n}${m.failed ? ` · ${m.failed} ratée${m.failed > 1 ? 's' : ''}` : ''}</b><small>${time} · moy. ${fmt(m.mean)} m/s${m.n > 1 ? ` · −${Math.round(m.loss * 100)} %` : ''}</small></span><span class="hv">${fmt(m.best)}<small>m/s</small></span></button>`;
+    }).join('') + '</div>';
+  }
+  const profs = `<section class="block"><h2 class="cap">Profils</h2>${db.profiles.map(q => {
+    const n = db.sets.filter(x => x.profileId === q.id).length, locked = n > 0 || db.profiles.length < 2;
+    return `<div class="hrow"><div><b>${esc(q.name)}</b><span>${n} série${n > 1 ? 's' : ''}</span></div><div class="prow"><button class="btn alt sm" data-act="pren" data-id="${q.id}">Renommer</button><button class="btn alt sm" data-act="pdel" data-id="${q.id}"${locked ? ' disabled' : ''}>Supprimer</button></div></div>`;
+  }).join('')}<p class="hint" style="margin-top:8px">Un profil ne se supprime que s'il n'a plus de série : ouvre une série et change son profil pour la déplacer.</p></section>`;
+  $('#app').innerHTML = `<header class="top"><h1>Historique</h1>${whoBar()}</header>
+    <div class="ex" role="group" aria-label="Mouvement">${Object.entries(EXERCISES).map(([k, n]) => `<button data-act="hex" data-v="${k}" class="${k === ex ? 'on' : ''}" aria-pressed="${k === ex}">${n}</button>`).join('')}</div>
+    ${chart}${list}${profs}` +
     (db.sets.length ? `<button class="btn alt" data-act="exporthist">Exporter l'historique (JSON)</button>` : '');
+}
+
+const hset = () => db.sets.find(s => s.id === S.h.setId);
+
+function renderHistoSet() {
+  const s = hset(), m = setSummary(s), day = store.dayKey(s.t), h = S.h;
+  const time = new Date(s.t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  $('#app').innerHTML = `<header class="top"><button class="back" data-act="hback">← Historique</button></header>
+    <section class="reading"><p class="cap">${dateLong(day)} · ${time}</p>
+      <p class="stat">${kg(s.load)}<span class="unit">kg · ${EXERCISES[s.exercise]}</span></p></section>
+    <dl class="facts">
+      <div><dt>Reps</dt><dd>${m.n}${m.failed ? `<small>+${m.failed} ratée${m.failed > 1 ? 's' : ''}</small>` : ''}</dd></div>
+      <div><dt>Meilleure</dt><dd>${fmt(m.best)}</dd></div>
+      <div><dt>Moyenne</dt><dd>${fmt(m.mean)}</dd></div>
+      <div><dt>Perte</dt><dd>${Math.round(m.loss * 100)}<small>%</small></dd></div>
+    </dl>
+    <section class="reps"><h2 class="cap">Reps · touche une barre pour le détail</h2>${barsSvg(s.reps, h.sel, null, 'hsel')}</section>
+    ${detailHtml(s.reps, h.sel, ['hfail', 'hdelrep'])}
+    <section class="block"><div class="setting"><label class="cap" for="setProf">Profil de cette série</label>
+      <select id="setProf" class="sel">${db.profiles.map(q => `<option value="${q.id}"${q.id === s.profileId ? ' selected' : ''}>${esc(q.name)}</option>`).join('')}</select></div></section>
+    <button class="btn alt" data-act="hdelset">Supprimer la série</button>`;
+}
+
+function histoPersist() {
+  const s = hset();
+  if (s && !s.reps.length) { db.sets = db.sets.filter(x => x !== s); S.h.view = 'list'; S.h.setId = null; toast('Série vide supprimée'); }
+  store.save(db); renderHisto();
 }
 
 function render() {
@@ -324,7 +433,7 @@ document.addEventListener('click', e => {
   const act = el.dataset.act, v = el.dataset.v;
   unlockAudio();                                      // Chrome n'autorise le son qu'après un toucher
   if (act === 'loss') { db.settings.lossStop = parseFloat(v); store.save(db); renderSeance(); }
-  else if (act === 'tog') { db.settings[v] = !db.settings[v]; store.save(db); if (db.settings[v] && v === 'voice') speak('Voix activée'); renderSeance(); }
+  else if (act === 'tog') { db.settings[v] = !db.settings[v]; store.save(db); renderSeance(); }
   else if (act === 'fail') toggleFailed(S.selected);
   else if (act === 'delrep') deleteRep(S.selected);
   else if (act === 'exportraw') exportRaw();
@@ -337,11 +446,29 @@ document.addEventListener('click', e => {
   else if (act === 'start') startSet();
   else if (act === 'end') endSet();
   else if (act === 'sim') simulate();
-  else if (act === 'del') { db.sets = db.sets.filter(s => String(s.id) !== el.dataset.id); store.save(db); renderHisto(); }
+  else if (act === 'hex') { S.h.ex = v; S.h.load = null; renderHisto(); }
+  else if (act === 'hmetric') { S.h.metric = v; renderHisto(); }
+  else if (act === 'hopen') { S.h.setId = parseInt(el.dataset.id, 10); S.h.view = 'set'; S.h.sel = Math.max(0, (hset()?.reps.length || 1) - 1); renderHisto(); window.scrollTo(0, 0); }
+  else if (act === 'hback') { S.h.view = 'list'; S.h.setId = null; renderHisto(); window.scrollTo(0, 0); }
+  else if (act === 'hsel') { S.h.sel = parseInt(el.dataset.i, 10); renderHisto(); }
+  else if (act === 'hfail') { const r = hset()?.reps[S.h.sel]; if (r) { if (r.failed) delete r.failed; else r.failed = true; histoPersist(); } }
+  else if (act === 'hdelrep') { const s = hset(); if (s && s.reps[S.h.sel]) { s.reps.splice(S.h.sel, 1); S.h.sel = Math.max(0, Math.min(S.h.sel, s.reps.length - 1)); histoPersist(); } }
+  else if (act === 'hdelset') { if (confirm('Supprimer cette série ?')) { db.sets = db.sets.filter(x => x.id !== S.h.setId); S.h.view = 'list'; S.h.setId = null; store.save(db); renderHisto(); } }
+  else if (act === 'pren') renameProfile(el.dataset.id);
+  else if (act === 'pdel') deleteProfile(el.dataset.id);
 });
 document.addEventListener('change', e => {
+  if (e.target.id === 'profSel') {
+    if (e.target.value === '__new') createProfile();
+    else { db.activeProfile = e.target.value; store.save(db); render(); }
+  }
+  if (e.target.id === 'hLoad') { S.h.load = parseFloat(e.target.value); renderHisto(); }
+  if (e.target.id === 'setProf') {
+    const s = hset(), p = db.profiles.find(q => q.id === e.target.value);
+    if (s && p) { s.profileId = p.id; store.save(db); S.h.view = 'list'; S.h.setId = null; toast(`Série déplacée vers ${p.name}`); render(); }
+  }
   if (e.target.id === 'loadIn') { S.load = Math.max(0, parseFloat(e.target.value) || 0); db.last.load = S.load; store.save(db); }
-  if (e.target.id === 'mvtIn') { db.mvt[S.exercise] = Math.max(0.05, parseFloat(e.target.value) || db.mvt[S.exercise]); store.save(db); renderProfil(); }
+  if (e.target.id === 'mvtIn') { const m = prof().mvt; m[S.exercise] = Math.max(0.05, parseFloat(e.target.value) || m[S.exercise]); store.save(db); renderProfil(); }
 });
 $('#nav').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { S.tab = b.dataset.v; render(); } });
 

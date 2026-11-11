@@ -115,6 +115,24 @@ td:last-child { text-align: right; font: 800 1.5rem/1 var(--display); letter-spa
 .hrow b { font-weight: 700; } .hrow span { display: block; font-size: 0.8125rem; color: var(--ink-2); }
 .x { border: 0; background: transparent; width: 44px; height: 44px; font-size: 1.5rem; color: var(--ink-3); }
 
+/* profils, historique */
+.who { display: inline-flex; align-items: center; gap: var(--space-sm); }
+.sel, .who select { min-height: 44px; max-width: 11rem; padding: 0 var(--space-sm); border: 1.5px solid var(--ink); border-radius: 4px; background: var(--paper); color: var(--ink); font: 700 var(--t-body) var(--text); text-transform: uppercase; letter-spacing: 0.04em; }
+.stat { font: 800 3.5rem/1 var(--display); letter-spacing: -0.01em; font-variant-numeric: tabular-nums; margin-top: var(--space-xs); }
+.stat .unit { font: 600 var(--t-lead)/1 var(--text); letter-spacing: 0; color: var(--ink-3); margin-inline-start: var(--space-sm); text-transform: none; }
+.back { border: 0; background: transparent; padding: 10px 0; min-height: 44px; font-weight: 700; font-size: var(--t-body); text-transform: uppercase; letter-spacing: 0.06em; }
+.line { fill: none; stroke: var(--ink); stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
+.dot { fill: var(--paper); stroke: var(--ink); stroke-width: 2.5; }
+.dot.last { fill: var(--ink); }
+.hlist { display: flex; flex-direction: column; }
+.hset { display: flex; justify-content: space-between; align-items: center; gap: var(--space-md); min-height: 64px; padding: 8px 0; border: 0; border-bottom: 1px solid var(--rule); background: transparent; text-align: left; width: 100%; }
+.hset b { display: block; font-weight: 700; }
+.hset small { display: block; font-size: 0.8125rem; color: var(--ink-2); }
+.hv { font: 800 2rem/1 var(--display); font-variant-numeric: tabular-nums; text-align: right; }
+.hv small { display: inline; font: 600 11px var(--text); color: var(--ink-3); margin-inline-start: 3px; }
+.prow { display: flex; gap: var(--space-sm); }
+.facts small { display: inline; }
+
 /* navigation et message */
 #nav { position: fixed; inset: auto 0 0 0; display: flex; background: var(--paper); border-top: 1px solid var(--rule); padding-bottom: env(safe-area-inset-bottom); }
 #nav button { flex: 1; min-height: 60px; border: 0; background: transparent; color: var(--ink-3); font-weight: 600; font-size: var(--t-body); text-transform: uppercase; letter-spacing: 0.06em; border-top: 3px solid transparent; }

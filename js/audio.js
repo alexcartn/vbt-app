@@ -1,4 +1,4 @@
-// Bips (Web Audio) et voix (synthèse vocale du navigateur). Tout échoue en silence : le son n'est jamais bloquant.
+// Bips (Web Audio). Tout échoue en silence : le son n'est jamais bloquant.
 let ctx = null;
 
 /** À appeler depuis un geste de l'utilisateur (toucher un bouton) : Chrome refuse de produire du son avant. */
@@ -28,14 +28,4 @@ export function beepRep(zone) {
 /** Alerte d'arrêt : trois bips graves, impossibles à confondre avec un bip de rep. */
 export function beepStop() {
   try { [0, 0.2, 0.4].forEach(s => tone(260, s, 0.15, 0.5)); } catch (_) { /* ignore */ }
-}
-
-export function speak(text) {
-  try {
-    if (!('speechSynthesis' in window)) return;
-    speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = 'fr-FR'; u.rate = 1.1;
-    speechSynthesis.speak(u);
-  } catch (_) { /* ignore */ }
 }

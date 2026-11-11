@@ -43,12 +43,12 @@ r.csv = { lines: lines.length, head: lines.slice(0, 4), firstSample: lines[3] };
 
 // réglages persistés
 click('[data-act=loss][data-v="0"]'); await wait(50);
-click('[data-act=tog][data-v=voice]'); await wait(50);
+click('[data-act=tog][data-v=sound]'); await wait(50);
 r.settings = db().settings;
 
 // historique + export JSON
 click('#nav button[data-v=histo]'); await wait(50);
-r.histo = $('.hrow')?.textContent.trim();
+r.histo = $('.hset')?.textContent.trim();
 r.exportHistBtn = !!$('[data-act=exporthist]');
 document.title = 'fini';
 $('#result').textContent = JSON.stringify(r, null, 1);

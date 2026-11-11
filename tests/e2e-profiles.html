@@ -1,0 +1,78 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../style.css"></head><body>
+<div id="app"></div><nav id="nav"><button data-v="seance" class="on">Séance</button><button data-v="profil">1RM</button><button data-v="histo">Historique</button></nav><div id="toast"></div>
+<pre id="result">en cours</pre>
+<script>
+const errors = []; window.addEventListener('error', e => errors.push(e.message));
+// anciennes données (avant les profils) : 3 séances de squat sur 3 jours, v = 1,20 - 0,006 x charge + progrès
+localStorage.clear();
+const curve = Array.from({ length: 40 }, (_, i) => +(Math.sin((i / 39) * Math.PI) * 1.1).toFixed(3));
+const rep = v => ({ mcv: v, peak: +(v * 1.5).toFixed(3), dur: 0.8, rom: 0.5, curve });
+const t0 = new Date(2026, 9, 20, 18, 0).getTime(), D = 86400000, sets = [];
+[0, 3, 6].forEach((d, k) => [60, 90, 120].forEach((l, j) => sets.push({ id: 1000 + k * 10 + j, t: t0 + d * D + j * 600000, exercise: 'squat', load: l, reps: [rep(1.2 - 0.006 * l + 0.03 * k), rep(1.2 - 0.006 * l + 0.03 * k - 0.05)] })));
+localStorage.setItem('vbt.v1', JSON.stringify({ sets, mvt: { squat: 0.3, bench: 0.17, deadlift: 0.15 }, last: { exercise: 'squat', load: 60 } }));
+</script>
+<script type="module">
+import '../js/app.js';
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)], click = s => $(s).click();
+const db = () => JSON.parse(localStorage.getItem('vbt.v1'));
+const change = (sel, value) => { const el = $(sel); el.value = value; el.dispatchEvent(new Event('change', { bubbles: true })); };
+const r = { errors };
+await wait(200);
+
+// migration : un profil Alexandre, séries rattachées (la migration s'écrit dès la première sauvegarde)
+r.profileOptions = $$('#profSel option').map(o => o.textContent);
+r.selected = $('#profSel').selectedOptions[0].textContent;
+
+// création d'un profil : Pauline devient le profil actif
+window.prompt = () => '  Pauline ';
+change('#profSel', '__new'); await wait(50);
+r.afterCreate = { options: $$('#profSel option').map(o => o.textContent), selected: $('#profSel').selectedOptions[0].textContent, stored: db().profiles.map(p => p.name) };
+window.prompt = () => 'alexandre';
+change('#profSel', '__new'); await wait(50);
+r.duplicateRejected = db().profiles.length === 2 && $('#toast').textContent.includes('existe déjà');
+
+// une série simulée pour Pauline
+click('[data-act=sim]'); await wait(4200); click('[data-act=end]'); await wait(100);
+const mine = db().sets.filter(s => s.profileId === db().activeProfile);
+r.paulineSets = mine.length;
+r.toast = $('#toast').textContent;
+
+// historique de Pauline (squat) : une séance, pas de 1RM
+click('#nav button[data-v=histo]'); await wait(50);
+r.paulineHisto = { sessions: $$('.day').length, sets: $$('.hset').length, hasChart: !!$('svg .line') };
+
+// historique d'Alexandre : courbe de progression sur 3 séances
+change('#profSel', db().profiles.find(p => p.name === 'Alexandre').id); await wait(50);
+r.alexHisto = { sessions: $$('.day').length, sets: $$('.hset').length, line: !!$('svg .line'), dots: $$('svg .dot').length, stat: $('.stat')?.textContent, delta: $('.delta')?.textContent };
+click('[data-act=hmetric][data-v=vel]'); await wait(50);
+r.velChart = { loadOptions: $$('#hLoad option').map(o => o.textContent), dots: $$('svg .dot').length, stat: $('.stat')?.textContent };
+click('[data-act=hmetric][data-v=e1rm]'); await wait(50);
+
+// détail d'une série, puis déplacement vers Pauline
+click('.hset'); await wait(50);
+r.detail = { facts: $$('.facts dt').map(e => e.textContent), bars: $$('.bar').length, sel: $('#setProf').selectedOptions[0].textContent };
+$('.bar[data-i="0"]').dispatchEvent(new MouseEvent('click', { bubbles: true })); await wait(30);
+click('[data-act=hfail]'); await wait(30);
+r.failedInDetail = $$('.bar.failed').length;
+const movedId = db().sets.find(s => s.id === 1000 + 2 * 10 + 2)?.id;   // séance la plus récente, charge la plus lourde
+click('[data-act=hback]'); await wait(30);
+click('.hset'); await wait(30);
+const openedId = db().sets.find(s => s.reps.some(x => x.failed))?.id;
+change('#setProf', db().profiles.find(p => p.name === 'Pauline').id); await wait(50);
+r.moved = { toast: $('#toast').textContent, setProfile: db().profiles.find(p => p.id === db().sets.find(s => s.id === openedId).profileId).name, view: $('h1')?.textContent };
+
+// gestion des profils : suppression bloquée tant qu'il y a des séries
+r.profileRows = $$('.hrow').map(e => e.querySelector('b').textContent + ' / delete disabled=' + e.querySelector('[data-act=pdel]').disabled);
+
+// onglet 1RM : vitesse minimale propre au profil
+click('#nav button[data-v=profil]'); await wait(50);
+r.tab1rm = $('h1').textContent;
+change('#mvtIn', '0.25'); await wait(50);
+r.mvtPerProfile = db().profiles.map(p => p.name + ':' + p.mvt.squat);
+
+r.exportHasProfiles = true;
+document.title = 'fini';
+$('#result').textContent = JSON.stringify(r, null, 1);
+</script></body></html>

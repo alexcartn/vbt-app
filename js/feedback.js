@@ -1,4 +1,4 @@
-// Logique pure du retour pendant la série : perte de vitesse, seuil d'arrêt, texte vocal, export brut.
+// Logique pure du retour pendant la série : perte de vitesse, seuil d'arrêt, export brut.
 
 /** Reps comptées : on écarte celles marquées ratées. */
 export const activeReps = reps => reps.filter(r => !r.failed);
@@ -17,14 +17,6 @@ export function shouldStop(reps, threshold) {
   const s = setStats(reps);
   // tolérance : 0,8 -> 0,64 vaut 20 % pile malgré les arrondis flottants
   return s.n >= 2 && s.loss >= threshold - 1e-9;
-}
-
-const WORDS = ['zéro', 'un', 'deux', 'trois', 'quatre', 'cinq', 'six', 'sept', 'huit', 'neuf'];
-
-/** "0,75" lu chiffre par chiffre ("zéro virgule sept cinq") : la synthèse française lit mal les décimales. */
-export function speechText(v) {
-  const [i, d] = v.toFixed(2).split('.');
-  return [...i].map(c => WORDS[+c]).join(' ') + ' virgule ' + [...d].map(c => WORDS[+c]).join(' ');
 }
 
 /** CSV des échantillons bruts rejouables : une ligne i,ax,ay,az,gx,gy,gz (g et °/s), méta en commentaires. */

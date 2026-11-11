@@ -1,6 +1,6 @@
 // Service worker : l'app reste utilisable hors ligne (utile en salle), sans jamais servir une version périmée si le réseau répond.
-const CACHE = 'vbt-v3';
-const SHELL = ['./', 'index.html', 'style.css', 'manifest.webmanifest', 'js/app.js', 'js/signal.js', 'js/ble.js', 'js/sim.js', 'js/profile.js', 'js/store.js', 'js/feedback.js', 'js/audio.js', 'icons/icon-192.png', 'icons/icon-512.png', 'fonts/big-shoulders-800.woff2', 'fonts/hanken-grotesk.woff2'];
+const CACHE = 'vbt-v4';
+const SHELL = ['./', 'index.html', 'style.css', 'manifest.webmanifest', 'js/app.js', 'js/signal.js', 'js/ble.js', 'js/sim.js', 'js/profile.js', 'js/store.js', 'js/feedback.js', 'js/audio.js', 'js/history.js', 'icons/icon-192.png', 'icons/icon-512.png', 'fonts/big-shoulders-800.woff2', 'fonts/hanken-grotesk.woff2'];
 
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => {
