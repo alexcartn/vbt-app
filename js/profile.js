@@ -37,3 +37,10 @@ export function fitProfile(points, mvt) {
 }
 
 export const loadForVelocity = (fit, v) => (v - fit.intercept) / fit.slope;
+
+/** Avertissement tant que la vitesse minimale n'est pas individualisée (null si elle l'est). Source : littérature, voir README. */
+export function mvtNote(exercise, custom) {
+  if (custom) return null;
+  if (exercise === 'deadlift') return "Deadlift : la littérature juge l'estimation du 1RM peu fiable, et la vitesse minimale varie selon la barre. Individualise-la avec ta propre vitesse à l'échec.";
+  return "Vitesse minimale par défaut : valeur générale. Une valeur propre à toi (ta vitesse à l'échec) donne une estimation plus juste.";
+}

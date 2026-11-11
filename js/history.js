@@ -3,6 +3,9 @@ import { bestPerLoad, fitProfile } from './profile.js';
 import { activeReps, setStats } from './feedback.js';
 import { dayKey } from './store.js';
 
+/** Nombre de reps comptées d'une série : saisie à la main (sans capteur) ou reps valides mesurées. */
+export const repCount = set => (set.manual ? set.count : activeReps(set.reps).length);
+
 /** Séries d'un exercice et d'un profil, regroupées par jour, triées de la plus ancienne à la plus récente. */
 export function sessions(sets, exercise, profileId, mvt) {
   const byDay = new Map();
@@ -15,8 +18,8 @@ export function sessions(sets, exercise, profileId, mvt) {
   return [...byDay].sort(([a], [b]) => (a < b ? -1 : 1)).map(([day, list]) => {
     list.sort((a, b) => a.t - b.t);
     const fit = fitProfile(bestPerLoad(list), mvt[exercise]);
-    const volume = list.reduce((t, s) => t + s.load * activeReps(s.reps).length, 0);
-    return { day, sets: list, fit, e1rm: fit.ok ? fit.e1rm : null, volume, nReps: list.reduce((t, s) => t + activeReps(s.reps).length, 0) };
+    const nReps = list.reduce((t, s) => t + repCount(s), 0);
+    return { day, sets: list, fit, e1rm: fit.ok ? fit.e1rm : null, volume: list.reduce((t, s) => t + s.load * repCount(s), 0), nReps };
   });
 }
 
@@ -42,9 +45,25 @@ export function loadsUsed(sess) {
 
 /** Résumé d'une série : reps valides, ratées, meilleure et moyenne, perte de vitesse de la dernière rep. */
 export function setSummary(set) {
+  if (set.manual) return { n: set.count, failed: 0, best: 0, mean: 0, loss: 0, manual: true };
   const act = activeReps(set.reps), st = setStats(set.reps);
   return {
     n: act.length, failed: set.reps.length - act.length, best: st.best, loss: st.loss,
     mean: act.length ? act.reduce((t, r) => t + r.mcv, 0) / act.length : 0
   };
+}
+
+/** Records par nombre de reps : pour N = 1 à maxN, la charge la plus lourde tenue sur au moins N reps valides (à égalité, la plus récente). */
+export function repMaxes(sets, exercise, profileId, maxN = 5) {
+  const mine = sets.filter(s => s.exercise === exercise && s.profileId === profileId);
+  const out = [];
+  for (let n = 1; n <= maxN; n++) {
+    let best = null;
+    for (const s of mine) {
+      if (repCount(s) < n) continue;
+      if (!best || s.load > best.load || (s.load === best.load && s.t > best.t)) best = s;
+    }
+    if (best) out.push({ n, load: best.load, t: best.t, setId: best.id, manual: !!best.manual, v: best.manual ? null : setSummary(best).mean });
+  }
+  return out;
 }

@@ -2,9 +2,9 @@ import { Tracker } from './signal.js';
 import { Sensor, bleSupported } from './ble.js';
 import { generateSet } from './sim.js';
 import * as store from './store.js';
-import { EXERCISES, MVT_DEFAULT, bestPerLoad, fitProfile, loadForVelocity } from './profile.js';
-import { activeReps, setStats, shouldStop, rawCsv, restDisplay } from './feedback.js';
-import { sessions, progress, loadsUsed, setSummary } from './history.js';
+import { EXERCISES, MVT_DEFAULT, bestPerLoad, fitProfile, loadForVelocity, mvtNote } from './profile.js';
+import { activeReps, setStats, shouldStop, rawCsv, restDisplay, targetDelta } from './feedback.js';
+import { sessions, progress, loadsUsed, setSummary, repMaxes } from './history.js';
 import { unlockAudio, beepRep, beepStop, beepReady } from './audio.js';
 
 const $ = s => document.querySelector(s);
@@ -19,7 +19,7 @@ const prof = () => db.profiles.find(p => p.id === db.activeProfile);
 const tracker = new Tracker();
 let gyro = [0, 0, 0], sensor = null, connected = false, simTimer = null, lastState = 'calib', wakeLock = null;
 const S = {
-  tab: 'seance', exercise: db.last.exercise, load: db.last.load,
+  tab: 'seance', exercise: db.last.exercise, load: db.last.load, target: db.last.target ?? null,   // target : vitesse cible (m/s) ou null
   recording: false, reps: [], selected: null, fresh: null, hz: 0, rate: { n: 0, t0: 0 }, msg: '',
   h: { view: 'list', ex: db.last.exercise, metric: 'e1rm', load: null, setId: null, sel: null },   // onglet Historique
   restEnd: null,                     // minuteur de repos : instant (ms) où le repos est terminé
@@ -128,6 +128,27 @@ function deleteRep(i) {
   toast('Rep supprimée');
 }
 
+// ---------- série sans capteur ----------
+function addManualSet() {
+  const n = parseInt(prompt('Nombre de reps de cette série (sans capteur)', '5'), 10);
+  if (!(n >= 1 && n <= 100)) return;
+  const t = Date.now();
+  db.sets.push({ id: t, t, exercise: S.exercise, load: S.load, profileId: db.activeProfile, manual: true, count: n, reps: [] });
+  db.last = { exercise: S.exercise, load: S.load, target: S.target };
+  store.save(db);
+  toast(`Série sans capteur ajoutée : ${n} reps à ${kg(S.load)} kg`);
+}
+
+// ---------- vitesse minimale individuelle : la vitesse de ta dernière rep réussie à l'échec ----------
+function setMvtFromRep(rep, profileId, exercise) {
+  const p = db.profiles.find(x => x.id === profileId);
+  if (!rep || !p || rep.failed) { toast('Choisis une rep réussie.'); return; }
+  if (!confirm(`Définir ${fmt(rep.mcv)} m/s comme vitesse minimale de ${p.name} en ${EXERCISES[exercise].toLowerCase()} ? Cela change son 1RM estimé.`)) return;
+  p.mvt[exercise] = Math.max(0.05, rep.mcv); p.mvtCustom[exercise] = true;
+  store.save(db);
+  toast(`Vitesse minimale de ${p.name} : ${fmt(rep.mcv)} m/s`);
+}
+
 // ---------- export ----------
 function download(name, text, type) {
   const url = URL.createObjectURL(new Blob([text], { type }));
@@ -174,8 +195,8 @@ function endSet() {
   S.setId = null;
   if (S.reps.length) {
     S.setId = Date.now();
-    db.sets.push({ id: S.setId, t: S.setId, exercise: S.exercise, load: S.load, profileId: db.activeProfile, reps: S.reps });
-    db.last = { exercise: S.exercise, load: S.load };
+    db.sets.push({ id: S.setId, t: S.setId, exercise: S.exercise, load: S.load, profileId: db.activeProfile, ...(S.target ? { target: S.target } : {}), reps: S.reps });
+    db.last = { exercise: S.exercise, load: S.load, target: S.target };
     store.save(db);
     toast(`Série de ${prof().name} enregistrée : ${S.reps.length} reps à ${kg(S.load)} kg`);
     startRest();
@@ -216,10 +237,10 @@ function renderStatus() {
   el.className = 'chip ' + (connected ? (tracker.state === 'calib' ? 'warn' : 'ok') : '');
 }
 
-function barsSvg(reps = S.reps, selected = S.selected, fresh = S.fresh, act = 'sel') {
+function barsSvg(reps = S.reps, selected = S.selected, fresh = S.fresh, act = 'sel', target = S.target) {
   const n = reps.length;
   if (!n) return `<p class="empty">${S.recording ? 'Fais ta première rep. Elle apparaît ici dès qu\'elle est terminée.' : 'Les reps de la série s\'affichent ici.'}</p>`;
-  const best = setStats(reps).best || Math.max(...reps.map(r => r.mcv)), top = Math.max(1, best * 1.12);
+  const best = setStats(reps).best || Math.max(...reps.map(r => r.mcv)), top = Math.max(1, best * 1.12, (target || 0) * 1.1);
   const W = 320, H = 150, bw = Math.min(46, (W - 10) / n - 8), gap = (W - n * bw) / (n + 1);
   let out = `<svg id="bars" viewBox="0 0 ${W} ${H + 24}" role="img" aria-label="Vitesse moyenne de chaque rep">`;
   reps.forEach((r, i) => {
@@ -229,12 +250,14 @@ function barsSvg(reps = S.reps, selected = S.selected, fresh = S.fresh, act = 's
     out += `<rect class="bar ${cls}${i === selected ? ' sel' : ''}${i === fresh ? ' fresh' : ''}" data-act="${act}" data-i="${i}" x="${x}" y="${y}" width="${bw}" height="${h}"/>`;
     out += `<text class="bv${r.failed ? ' fail' : ''}" x="${x + bw / 2}" y="${y - 6}">${fmt(r.mcv)}</text><text class="bn" x="${x + bw / 2}" y="${H + 16}">${i + 1}</text>`;
   });
+  if (target) { const y = H - (target / top) * (H - 18); out += `<line class="tline" x1="0" y1="${y}" x2="${W}" y2="${y}"/><text class="tlab" x="${W}" y="${y - 4}">cible ${fmt(target)}</text>`; }
   return out + `<line class="base" x1="0" y1="${H}" x2="${W}" y2="${H}"/></svg>`;
 }
 
-function detailHtml(reps = S.reps, selected = S.selected, acts = ['fail', 'delrep']) {
+function detailHtml(reps = S.reps, selected = S.selected, acts = ['fail', 'delrep', 'setmvt']) {
   const r = reps[selected];
   if (!r) return '';
+  const best = setStats(reps).best, gap = best ? Math.round(((best - r.mcv) / best) * 100) : 0;
   const W = 300, H = 80, max = Math.max(...r.curve, 0.1);
   const pts = r.curve.map((v, i) => `${(i / (r.curve.length - 1)) * W},${H - 4 - (Math.max(0, v) / max) * (H - 12)}`).join(' ');
   return `<section class="detail">
@@ -244,11 +267,12 @@ function detailHtml(reps = S.reps, selected = S.selected, acts = ['fail', 'delre
       <div><dt>Moyenne</dt><dd>${fmt(r.mcv)}<small>m/s</small></dd></div>
       <div><dt>Pic</dt><dd>${fmt(r.peak)}<small>m/s</small></dd></div>
       <div><dt>Durée</dt><dd>${fmt(r.dur, 1)}<small>s</small></dd></div>
-      <div><dt>Amplitude</dt><dd>${Math.round(r.rom * 100)}<small>cm</small></dd></div>
+      ${db.settings.showRom ? `<div><dt>Amplitude à valider</dt><dd>${Math.round(r.rom * 100)}<small>cm</small></dd></div>` : `<div><dt>Écart à la meilleure</dt><dd>${gap > 0 ? '−' : ''}${gap}<small>%</small></dd></div>`}
     </dl>
     <div class="repedit">
       <button class="btn alt sm" data-act="${acts[0]}">${r.failed ? 'Rep valide' : 'Rep ratée'}</button>
       <button class="btn alt sm" data-act="${acts[1]}">Supprimer</button>
+      <button class="btn alt sm wide" data-act="${acts[2]}">Définir comme vitesse minimale</button>
     </div></section>`;
 }
 
@@ -262,7 +286,9 @@ function renderSeance() {
     <section class="opts" aria-label="Retour pendant la série">
       <div class="optrow"><span class="cap" id="lossLbl">Alerte d'arrêt</span><div class="seg" role="group" aria-labelledby="lossLbl">${seg('loss', [[0, 'Off'], [0.1, '10 %'], [0.2, '20 %'], [0.3, '30 %']], v => cfg.lossStop === v)}</div></div>
       <div class="optrow"><span class="cap" id="restLbl">Repos</span><div class="seg" role="group" aria-labelledby="restLbl">${seg('rest', [[0, 'Off'], [120, '2 min'], [180, '3 min'], [300, '5 min']], v => cfg.rest === v)}</div></div>
+      <div class="optrow"><span class="cap" id="tgtLbl">Vitesse cible</span><div class="tstep" role="group" aria-labelledby="tgtLbl"><button data-act="tgt" data-v="-0.05" aria-label="Cible moins 0,05">−</button><output>${S.target ? `${fmt(S.target)} m/s` : 'Off'}</output><button data-act="tgt" data-v="0.05" aria-label="Cible plus 0,05">+</button></div></div>
       <div class="optrow"><span class="cap" id="fbLbl">Retour</span><div class="seg" role="group" aria-labelledby="fbLbl">${seg('tog', [['sound', 'Son']], v => cfg[v])}</div></div>
+      <div class="optrow"><span class="cap" id="romLbl">Test de mesure</span><div class="seg" role="group" aria-labelledby="romLbl">${seg('tog', [['showRom', 'Amplitude']], v => cfg[v])}</div></div>
     </section>
     <div class="ex" role="group" aria-label="Mouvement">${Object.entries(EXERCISES).map(([k, n]) => `<button data-act="ex" data-v="${k}" class="${k === S.exercise ? 'on' : ''}" aria-pressed="${k === S.exercise}">${n}</button>`).join('')}</div>
     <div class="stepper">
@@ -275,6 +301,7 @@ function renderSeance() {
   const dz = last ? `z-${zone(last.mcv, best)}` : "";
   const delta = (last ? (loss > 0 ? `<p class="delta ${dz}">−${loss} % par rapport à ta meilleure rep</p>` : `<p class="delta ${dz}">Meilleure rep de la série</p>`)
     : `<p class="delta quiet">${S.recording ? 'En attente de la première rep' : 'Règle la charge, puis démarre la série.'}</p>`)
+    + (last && S.target ? (td => `<p class="delta">Cible ${fmt(S.target)} m/s : ${td.text} ${td.met ? '(atteinte)' : '(non atteinte)'}</p>`)(targetDelta(last.mcv, S.target)) : '')
     + (stop ? `<p class="stopbar" role="alert">Perte de ${loss} % : arrête la série</p>` : '');
   $('#app').innerHTML = `
     <header class="top"><span id="chip" class="chip"></span>${S.recording ? `<span class="ctx">${esc(prof().name)} · ${EXERCISES[S.exercise]} · ${kg(S.load)} kg</span>` : whoBar()}</header>
@@ -291,6 +318,7 @@ function renderSeance() {
       ${!connected && !simTimer ? `<button class="btn" data-act="connect">Connecter le capteur</button><button class="btn alt" data-act="sim">Simuler une série</button>` : ''}
       ${(connected || simTimer) && !S.recording ? `<button class="btn" data-act="start">Démarrer la série</button>` : ''}
       ${S.recording ? `<button class="btn" data-act="end">Terminer la série</button>` : ''}
+      ${!S.recording ? `<button class="btn alt" data-act="manual">Série sans capteur</button>` : ''}
       ${!S.recording && S.raw.length > 50 ? `<button class="btn alt" data-act="exportraw">Exporter les données brutes (CSV)</button>` : ''}
       ${connected && !S.recording ? `<button class="btn alt" data-act="disconnect">Déconnecter</button>` : ''}
     </div>`;
@@ -359,7 +387,7 @@ function renderProfil() {
   if (!pts.length) body = `<p class="empty">Aucune série aujourd'hui pour ce mouvement. Fais une montée en charge dans l'onglet Séance : 3 ou 4 charges, 1 ou 2 reps rapides chacune.</p>`;
   else {
     const sug = fit.ok ? [0.9, 0.75, 0.6, 0.5, 0.4].map(v => ({ v, l: loadForVelocity(fit, v) })).filter(x => x.l > 0 && x.l < fit.e1rm) : [];
-    body = (fit.ok ? `<section class="reading"><p class="cap">1RM estimé du jour · ${EXERCISES[ex]}</p><p class="num">${kg(fit.e1rm)}<span class="unit">kg</span></p><p class="delta quiet">${pts.length} charge${pts.length > 1 ? 's' : ''} · R² ${fmt(fit.r2)}</p></section>` : `<p class="note"><strong>Pas d'estimation.</strong> ${fit.reason}</p>`) +
+    body = (fit.ok ? `<section class="reading"><p class="cap">1RM estimé du jour · ${EXERCISES[ex]}</p><p class="num">${kg(fit.e1rm)}<span class="unit">kg</span></p><p class="delta quiet">${pts.length} charge${pts.length > 1 ? 's' : ''} · R² ${fmt(fit.r2)}</p><p class="hint">Estimation indicative : elle sert à doser la charge du jour, pas à choisir un poids à tenter.</p></section>` : `<p class="note"><strong>Pas d'estimation.</strong> ${fit.reason}</p>`) +
       `<section class="block"><h2 class="cap">Charge et vitesse</h2>${profileSvg(pts, fit, mvt)}</section>` +
       (fit.ok && fit.warnings.length ? fit.warnings.map(w => `<p class="note"><strong>Attention.</strong> ${w}</p>`).join('') : '') +
       (sug.length ? `<section class="block"><h2 class="cap">Charge pour une vitesse cible</h2><table>${sug.map(x => `<tr><td>${fmt(x.v)} m/s</td><td>${kg(Math.round(x.l / 2.5) * 2.5)} kg</td></tr>`).join('')}</table></section>` : '');
@@ -367,8 +395,9 @@ function renderProfil() {
   $('#app').innerHTML = `<header class="top"><h1>1RM du jour</h1>${whoBar()}</header>
     <div class="ex" role="group" aria-label="Mouvement">${Object.entries(EXERCISES).map(([k, n]) => `<button data-act="ex" data-v="${k}" class="${k === ex ? 'on' : ''}" aria-pressed="${k === ex}">${n}</button>`).join('')}</div>
     ${body}
-    <section class="block"><div class="setting"><label class="cap" for="mvtIn">Vitesse minimale<br>(dernière rep réussie)</label><input id="mvtIn" type="number" step="0.01" inputmode="decimal" value="${mvt}"></div>
-      <p class="hint" style="margin-top:8px">Valeurs de départ tirées de la littérature : squat 0,30 · bench 0,17 · deadlift 0,15 m/s. À ajuster avec tes propres échecs.</p></section>`;
+    ${mvtNote(ex, prof().mvtCustom[ex]) ? `<p class="note"><strong>Prudence.</strong> ${mvtNote(ex, prof().mvtCustom[ex])}</p>` : ''}
+    <section class="block"><div class="setting"><label class="cap" for="mvtIn">Vitesse minimale${prof().mvtCustom[ex] ? ' (la tienne)' : ' (par défaut)'}<br>(dernière rep réussie)</label><input id="mvtIn" type="number" step="0.01" inputmode="decimal" value="${mvt}"></div>
+      <p class="hint" style="margin-top:8px">Valeurs de départ indicatives : squat 0,30 (valeur générale) · bench 0,17 · deadlift 0,15, non confirmée par la littérature (0,25 relevé pour la barre hexagonale). Le mieux : ta propre vitesse à l'échec, via « Définir comme vitesse minimale » dans le détail d'une rep.</p></section>`;
 }
 
 // ---------- historique : courbe de progression par exercice, séances, détail d'une série ----------
@@ -409,15 +438,17 @@ function renderHistoList() {
         <button data-act="hmetric" data-v="vel" class="${metric === 'vel' ? 'on' : ''}" aria-pressed="${metric === 'vel'}">Vitesse</button></div>` +
       (metric === 'vel' ? `<div class="setting"><label class="cap" for="hLoad">Charge</label><select id="hLoad" class="sel">${loads.map(l => `<option value="${l}"${l === h.load ? ' selected' : ''}>${kg(l)} kg</option>`).join('')}</select></div>` : '') +
       (pts.length ? `<section class="reading"><p class="cap">${metric === 'e1rm' ? '1RM estimé' : `Meilleure vitesse à ${kg(h.load)} kg`} · dernière séance</p>
-          <p class="stat">${fv(last.v)}<span class="unit">${unit}</span></p><p class="delta quiet">${delta || (pts.length === 1 ? 'Une seule séance : la courbe se trace à partir de la 2e.' : '')}</p></section>${lineSvg(pts, fv)}`
+          <p class="stat">${fv(last.v)}<span class="unit">${unit}</span></p><p class="delta quiet">${delta || (pts.length === 1 ? 'Une seule séance : la courbe se trace à partir de la 2e.' : '')}</p></section>${lineSvg(pts, fv)}${metric === 'e1rm' ? '<p class="hint">Estimation indicative, pas un poids à tenter. Le 1RM du deadlift est le moins fiable.</p>' : ''}`
         : `<p class="note"><strong>Pas de point.</strong> ${metric === 'e1rm' ? 'Le 1RM estimé demande au moins 2 charges différentes dans une même séance.' : 'Aucune série à cette charge.'}</p>`);
   }
-  let list = '';
+  const rms = repMaxes(db.sets, ex, p.id);
+  let list = rms.length ? `<section class="block"><h2 class="cap">Records · reps valides, séries sans capteur comprises</h2><div class="hlist">${rms.map(x =>
+    `<button class="hset" data-act="hopen" data-id="${x.setId}"><span><b>${x.n}RM</b><small>${dateShort(store.dayKey(x.t))}${x.v != null ? ` · moy. ${fmt(x.v)} m/s` : ' · sans capteur'}</small></span><span class="hv">${kg(x.load)}<small>kg</small></span></button>`).join('')}</div></section>` : '';
   for (const s of [...sess].reverse()) {
     list += `<h2 class="day">${dateLong(s.day)}</h2><p class="cap">${s.e1rm != null ? `1RM du jour ≈ ${kg(s.e1rm)} kg · ` : ''}${s.sets.length} série${s.sets.length > 1 ? 's' : ''} · ${s.nReps} reps · volume ${Math.round(s.volume)} kg</p>`;
     list += `<div class="hlist">` + s.sets.map(x => {
       const m = setSummary(x), time = new Date(x.t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-      return `<button class="hset" data-act="hopen" data-id="${x.id}"><span><b>${kg(x.load)} kg × ${m.n}${m.failed ? ` · ${m.failed} ratée${m.failed > 1 ? 's' : ''}` : ''}</b><small>${time} · moy. ${fmt(m.mean)} m/s${m.n > 1 ? ` · −${Math.round(m.loss * 100)} %` : ''}</small></span><span class="hv">${fmt(m.best)}<small>m/s</small></span></button>`;
+      return `<button class="hset" data-act="hopen" data-id="${x.id}"><span><b>${kg(x.load)} kg × ${m.n}${m.failed ? ` · ${m.failed} ratée${m.failed > 1 ? 's' : ''}` : ''}</b><small>${time}${m.manual ? ' · sans capteur' : ` · moy. ${fmt(m.mean)} m/s${m.n > 1 ? ` · −${Math.round(m.loss * 100)} %` : ''}${x.target ? ` · cible ${fmt(x.target)}` : ''}`}</small></span><span class="hv">${m.manual ? '–' : `${fmt(m.best)}<small>m/s</small>`}</span></button>`;
     }).join('') + '</div>';
   }
   const profs = `<section class="block"><h2 class="cap">Profils</h2>${db.profiles.map(q => {
@@ -435,25 +466,30 @@ const hset = () => db.sets.find(s => s.id === S.h.setId);
 function renderHistoSet() {
   const s = hset(), m = setSummary(s), day = store.dayKey(s.t), h = S.h;
   const time = new Date(s.t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-  $('#app').innerHTML = `<header class="top"><button class="back" data-act="hback">← Historique</button></header>
-    <section class="reading"><p class="cap">${dateLong(day)} · ${time}</p>
-      <p class="stat">${kg(s.load)}<span class="unit">kg · ${EXERCISES[s.exercise]}</span></p></section>
+  const head = `<header class="top"><button class="back" data-act="hback">← Historique</button></header>
+    <section class="reading"><p class="cap">${dateLong(day)} · ${time}${s.target ? ` · cible ${fmt(s.target)} m/s` : ''}</p>
+      <p class="stat">${kg(s.load)}<span class="unit">kg · ${EXERCISES[s.exercise]}</span></p></section>`;
+  const foot = `<section class="block"><div class="setting"><label class="cap" for="setProf">Profil de cette série</label>
+      <select id="setProf" class="sel">${db.profiles.map(q => `<option value="${q.id}"${q.id === s.profileId ? ' selected' : ''}>${esc(q.name)}</option>`).join('')}</select></div></section>
+    <button class="btn alt" data-act="hdelset">Supprimer la série</button>`;
+  if (s.manual) {
+    $('#app').innerHTML = head + `<dl class="facts"><div><dt>Reps</dt><dd>${m.n}</dd></div></dl><p class="note">Série saisie à la main, sans capteur : pas de vitesse mesurée. Elle compte dans le volume et les records.</p>` + foot;
+    return;
+  }
+  $('#app').innerHTML = head + `
     <dl class="facts">
       <div><dt>Reps</dt><dd>${m.n}${m.failed ? `<small>+${m.failed} ratée${m.failed > 1 ? 's' : ''}</small>` : ''}</dd></div>
       <div><dt>Meilleure</dt><dd>${fmt(m.best)}</dd></div>
       <div><dt>Moyenne</dt><dd>${fmt(m.mean)}</dd></div>
       <div><dt>Perte</dt><dd>${Math.round(m.loss * 100)}<small>%</small></dd></div>
     </dl>
-    <section class="reps"><h2 class="cap">Reps · touche une barre pour le détail</h2>${barsSvg(s.reps, h.sel, null, 'hsel')}</section>
-    ${detailHtml(s.reps, h.sel, ['hfail', 'hdelrep'])}
-    <section class="block"><div class="setting"><label class="cap" for="setProf">Profil de cette série</label>
-      <select id="setProf" class="sel">${db.profiles.map(q => `<option value="${q.id}"${q.id === s.profileId ? ' selected' : ''}>${esc(q.name)}</option>`).join('')}</select></div></section>
-    <button class="btn alt" data-act="hdelset">Supprimer la série</button>`;
+    <section class="reps"><h2 class="cap">Reps · touche une barre pour le détail</h2>${barsSvg(s.reps, h.sel, null, 'hsel', s.target ?? null)}</section>
+    ${detailHtml(s.reps, h.sel, ['hfail', 'hdelrep', 'hsetmvt'])}` + foot;
 }
 
 function histoPersist() {
   const s = hset();
-  if (s && !s.reps.length) { db.sets = db.sets.filter(x => x !== s); S.h.view = 'list'; S.h.setId = null; toast('Série vide supprimée'); }
+  if (s && !s.manual && !s.reps.length) { db.sets = db.sets.filter(x => x !== s); S.h.view = 'list'; S.h.setId = null; toast('Série vide supprimée'); }
   store.save(db); renderHisto();
 }
 
@@ -470,7 +506,11 @@ document.addEventListener('click', e => {
   const el = e.target.closest('[data-act]'); if (!el) return;
   const act = el.dataset.act, v = el.dataset.v;
   unlockAudio();                                      // Chrome n'autorise le son qu'après un toucher
-  if (act === 'rest') { db.settings.rest = parseInt(v, 10); store.save(db); renderSeance(); }
+  if (act === 'tgt') { const d = parseFloat(v), t = S.target ? Math.round((S.target + d) * 100) / 100 : (d > 0 ? 0.6 : null); S.target = t == null || t < 0.1 ? null : Math.min(2, t); db.last.target = S.target; store.save(db); renderSeance(); }
+  else if (act === 'manual') { addManualSet(); renderSeance(); }
+  else if (act === 'setmvt') { setMvtFromRep(S.reps[S.selected], db.activeProfile, S.exercise); renderSeance(); }
+  else if (act === 'hsetmvt') { const hs = hset(); if (hs) setMvtFromRep(hs.reps[S.h.sel], hs.profileId, hs.exercise); renderHisto(); }
+  else if (act === 'rest') { db.settings.rest = parseInt(v, 10); store.save(db); renderSeance(); }
   else if (act === 'restskip') { stopRest(); renderSeance(); }
   else if (act === 'loss') { db.settings.lossStop = parseFloat(v); store.save(db); renderSeance(); }
   else if (act === 'tog') { db.settings[v] = !db.settings[v]; store.save(db); renderSeance(); }
@@ -508,7 +548,7 @@ document.addEventListener('change', e => {
     if (s && p) { s.profileId = p.id; store.save(db); S.h.view = 'list'; S.h.setId = null; toast(`Série déplacée vers ${p.name}`); render(); }
   }
   if (e.target.id === 'loadIn') { S.load = Math.max(0, parseFloat(e.target.value) || 0); db.last.load = S.load; store.save(db); }
-  if (e.target.id === 'mvtIn') { const m = prof().mvt; m[S.exercise] = Math.max(0.05, parseFloat(e.target.value) || m[S.exercise]); store.save(db); renderProfil(); }
+  if (e.target.id === 'mvtIn') { const m = prof().mvt; m[S.exercise] = Math.max(0.05, parseFloat(e.target.value) || m[S.exercise]); prof().mvtCustom[S.exercise] = true; store.save(db); renderProfil(); }
 });
 $('#nav').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { S.tab = b.dataset.v; render(); } });
 

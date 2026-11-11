@@ -140,6 +140,14 @@ td:last-child { text-align: right; font: 800 1.5rem/1 var(--display); letter-spa
 .rest.over .cap, .rest.over .stat .unit { color: var(--paper); }
 .rest.over .btn { color: var(--paper); border-color: var(--paper); }
 
+/* vitesse cible, bouton large dans le détail d'une rep */
+.tstep { display: grid; grid-template-columns: 56px 1fr 56px; align-items: center; border: 1.5px solid var(--ink); border-radius: 4px; overflow: hidden; }
+.tstep button { min-height: 52px; border: 0; background: transparent; font: 700 1.4rem var(--text); }
+.tstep output { text-align: center; font: 800 1.4rem/1 var(--display); letter-spacing: 0.03em; text-transform: uppercase; border-inline: 1.5px solid var(--ink); padding: 14px 0; }
+.tline { stroke: var(--ink-2); stroke-width: 1.5; stroke-dasharray: 6 4; }
+.tlab { font: 600 10px var(--text); fill: var(--ink-2); text-anchor: end; }
+.repedit .wide { grid-column: 1 / -1; }
+
 /* navigation et message */
 #nav { position: fixed; inset: auto 0 0 0; display: flex; background: var(--paper); border-top: 1px solid var(--rule); padding-bottom: env(safe-area-inset-bottom); }
 #nav button { flex: 1; min-height: 60px; border: 0; background: transparent; color: var(--ink-3); font-weight: 600; font-size: var(--t-body); text-transform: uppercase; letter-spacing: 0.06em; border-top: 3px solid transparent; }

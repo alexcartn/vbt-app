@@ -30,3 +30,18 @@ vitesse par rep, profil charge-vitesse et 1RM estimé du jour, historique.
 - À zéro : deux bips aigus et une vibration (une seule fois), puis le dépassement s'affiche (+0:12) sur fond plein
 - Il disparaît au démarrage de la série suivante, ou avec « Passer »
 - Tests : `restDisplay` dans `tests/feedback.test.mjs`, scénario navigateur `tests/e2e-rest.html`
+
+## Prudence et validité (littérature, nov. 2026)
+
+Vérifié dans des résumés et extraits d'articles, un seul lu en détail :
+- Un capteur inertiel du même principe (VmaxPro) est valide pour la vitesse moyenne en squat à 75 % du 1RM (biais 0,01 m/s, limites d'accord 0,10 m/s) mais pas pour le déplacement (environ 10 cm d'écart) : **notre amplitude en cm est masquée** sauf avec le réglage « Test de mesure ». Notre algorithme n'est validé qu'en simulation : le test de distance mesurée reste à faire.
+- Le 1RM estimé est **indicatif** (dosage de la charge du jour, pas un poids à tenter). Le deadlift est le moins fiable ; la vitesse minimale par défaut (squat 0,30 général, bench 0,17, deadlift 0,15 non confirmé) est signalée tant qu'elle n'est pas individualisée.
+- « Définir comme vitesse minimale » (détail d'une rep) enregistre la vitesse de ta rep réussie la plus lente à l'échec : une valeur individuelle prédit mieux qu'une valeur générale.
+- Seuils de perte de vitesse 10 / 20 / 30 % : 10 à 20 % suffisent pour la force ; les zones de couleur restent une heuristique de l'app.
+
+## Vitesse cible, records, séries sans capteur
+
+- Vitesse cible (Off ou 0,10 à 2,00 m/s par pas de 0,05) : ligne pointillée sur les barres, écart de chaque rep, cible gardée avec la série
+- Records par nombre de reps (1RM à 5RM, reps valides, séries sans capteur comprises) dans l'Historique
+- « Série sans capteur » : charge et nombre de reps saisis à la main ; comptée dans le volume et les records, pas dans le profil charge-vitesse
+- Tests : `repMaxes`, `repCount`, `targetDelta`, `mvtNote` ; scénario navigateur `tests/e2e-features.html`

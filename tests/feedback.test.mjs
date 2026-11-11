@@ -1,4 +1,4 @@
-import { activeReps, setStats, shouldStop, rawCsv, restDisplay } from '../js/feedback.js';
+import { activeReps, setStats, shouldStop, rawCsv, restDisplay, targetDelta } from '../js/feedback.js';
 import { bestPerLoad } from '../js/profile.js';
 
 let fails = 0;
@@ -35,6 +35,12 @@ check('repos : arrondi à la seconde supérieure', restDisplay(500).text === '0:
 check('repos : à zéro = prêt', JSON.stringify(restDisplay(0)) === JSON.stringify({ over: true, text: '+0:00' }));
 check('repos : dépassement +0:12', JSON.stringify(restDisplay(-12000)) === JSON.stringify({ over: true, text: '+0:12' }), JSON.stringify(restDisplay(-12000)));
 check('repos : dépassement au-delà de 1 min', restDisplay(-75000).text === '+1:15');
+
+// écart à la vitesse cible
+check('cible : au-dessus', JSON.stringify(targetDelta(0.63, 0.60)) === JSON.stringify({ diff: 0.03, text: '+0,03', met: true }), JSON.stringify(targetDelta(0.63, 0.60)));
+check('cible : en dessous', JSON.stringify(targetDelta(0.54, 0.60)) === JSON.stringify({ diff: -0.06, text: '−0,06', met: false }), JSON.stringify(targetDelta(0.54, 0.60)));
+check('cible : pile dessus = atteinte', targetDelta(0.6, 0.6).met === true && targetDelta(0.6, 0.6).text === '+0,00');
+check('cible : arrondis flottants (0,7 - 0,6)', targetDelta(0.7, 0.6).text === '+0,10');
 
 // profil : une rep ratée ne doit pas fixer la meilleure vitesse d'une charge
 const pts = bestPerLoad([{ load: 100, reps: [R(0.60), R(1.40, true)] }]);

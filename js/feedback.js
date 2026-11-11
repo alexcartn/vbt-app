@@ -1,4 +1,4 @@
-// Logique pure du retour pendant la série : perte de vitesse, seuil d'arrêt, minuteur de repos, export brut.
+// Logique pure du retour pendant la série : perte de vitesse, seuil d'arrêt, minuteur de repos, vitesse cible, export brut.
 
 /** Reps comptées : on écarte celles marquées ratées. */
 export const activeReps = reps => reps.filter(r => !r.failed);
@@ -34,4 +34,10 @@ export function rawCsv(rows, meta) {
 export function restDisplay(remainingMs) {
   const over = remainingMs <= 0, sec = over ? Math.floor(-remainingMs / 1000) : Math.ceil(remainingMs / 1000);
   return { over, text: `${over ? '+' : ''}${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}` };
+}
+
+/** Écart d'une vitesse à la vitesse cible : "+0,03" (atteinte) ou "−0,06" (en dessous). */
+export function targetDelta(v, target) {
+  const diff = Math.round((v - target) * 100) / 100;
+  return { diff, text: `${diff >= 0 ? '+' : '−'}${Math.abs(diff).toFixed(2).replace('.', ',')}`, met: diff >= 0 };
 }

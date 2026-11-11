@@ -1,0 +1,87 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../style.css"></head><body>
+<div id="app"></div><nav id="nav"><button data-v="seance" class="on">Séance</button><button data-v="profil">1RM</button><button data-v="histo">Historique</button></nav><div id="toast"></div>
+<pre id="result">en cours</pre>
+<script>
+const errors = []; window.addEventListener('error', e => errors.push(e.message));
+localStorage.clear();
+window.confirm = () => true;
+const curve = Array.from({ length: 40 }, (_, i) => +(Math.sin((i / 39) * Math.PI) * 1.1).toFixed(3));
+const rep = v => ({ mcv: v, peak: +(v * 1.5).toFixed(3), dur: 0.8, rom: 0.5, curve });
+const t0 = new Date(2026, 9, 20, 18, 0).getTime(), sets = [];
+[60, 90, 120].forEach((l, j) => sets.push({ id: 1000 + j, t: t0 + j * 600000, exercise: 'squat', load: l, reps: [rep(1.2 - 0.006 * l), rep(1.2 - 0.006 * l - 0.05), rep(1.2 - 0.006 * l - 0.12)] }));
+localStorage.setItem('vbt.v1', JSON.stringify({ sets, mvt: { squat: 0.3, bench: 0.17, deadlift: 0.15 }, last: { exercise: 'squat', load: 60 } }));
+</script>
+<script type="module">
+// Scénario : vitesse cible, test d'amplitude, série sans capteur, records, vitesse minimale individuelle, notes de prudence.
+import '../js/app.js';
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)], click = s => $(s).click();
+const db = () => JSON.parse(localStorage.getItem('vbt.v1'));
+const bar = i => $(`.bar[data-i="${i}"]`).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+const r = { errors };
+try {
+  await wait(200);
+  // vitesse cible : - depuis Off reste Off, + donne 0,60, + encore 0,65
+  click('[data-act=tgt][data-v="-0.05"]'); await wait(30);
+  r.targetMinusFromOff = $('.tstep output').textContent;
+  click('[data-act=tgt][data-v="0.05"]'); await wait(30);
+  const t1 = $('.tstep output').textContent;
+  click('[data-act=tgt][data-v="0.05"]'); await wait(30);
+  r.target = [t1, $('.tstep output').textContent, db().last.target];
+  r.togButtons = $$('[data-act=tog]').map(b => b.textContent);
+
+  // une série simulée avec cible : ligne de cible, écart affiché, cible enregistrée
+  click('[data-act=sim]'); await wait(4200); click('[data-act=end]'); await wait(100);
+  r.simSet = { targetLine: !!$('.tline'), targetLabel: $('.tlab')?.textContent, gapText: $$('.delta').map(e => e.textContent).filter(t => t.startsWith('Cible'))[0], stored: db().sets.at(-1).target };
+  // amplitude masquée par défaut, affichée avec le test
+  r.detailDefault = $$('.facts dt').map(e => e.textContent).slice(-1)[0];
+  click('[data-act=tog][data-v=showRom]'); await wait(30);
+  r.detailTest = $$('.facts dt').map(e => e.textContent).slice(-1)[0];
+  click('[data-act=tog][data-v=showRom]'); await wait(30);
+
+  // vitesse minimale individuelle depuis une rep du détail
+  bar(2); await wait(30);
+  const before = db().profiles[0].mvt.squat;
+  click('[data-act=setmvt]'); await wait(50);
+  r.mvt = { before, after: db().profiles[0].mvt.squat, custom: db().profiles[0].mvtCustom.squat, repMcv: db().sets.at(-1).reps[2].mcv };
+
+  // série sans capteur
+  window.prompt = () => '8';
+  click('[data-act=manual]'); await wait(50);
+  const man = db().sets.at(-1);
+  r.manual = { manual: man.manual, count: man.count, reps: man.reps.length, load: man.load, toast: $('#toast').textContent };
+
+  // 1RM : notes de prudence (vitesse perso pour le squat -> pas de note ; deadlift -> note)
+  // montée en charge du jour (3 séries simulées) pour obtenir un 1RM estimé
+  for (const load of [60, 90, 120]) {
+    $('#loadIn').value = load; $('#loadIn').dispatchEvent(new Event('change', { bubbles: true }));
+    click('[data-act=sim]'); await wait(4200); click('[data-act=end]'); await wait(100);
+  }
+  click('#nav button[data-v=profil]'); await wait(50);
+  r.e1rmShown = $('.reading .num')?.textContent;
+  r.noteSquat = $$('.note').map(e => e.textContent).filter(t => t.startsWith('Prudence')).length;
+  r.hint1rm = $('.reading .hint')?.textContent ?? null;
+  click('[data-act=ex][data-v=deadlift]'); await wait(50);
+  r.noteDeadlift = $$('.note').map(e => e.textContent).find(t => t.startsWith('Prudence')) ?? null;
+  r.mvtLabel = $('label[for=mvtIn]')?.textContent.replace(/\s+/g, ' ');
+  click('[data-act=ex][data-v=squat]'); await wait(30);
+
+  // historique : records et séance manuelle
+  click('#nav button[data-v=histo]'); await wait(50);
+  const rows = $$('.hlist')[0] ? $$('.hlist')[0].querySelectorAll('.hset') : [];
+  r.records = [...rows].map(b => b.querySelector('b').textContent + ' ' + b.querySelector('.hv').textContent.trim());
+  r.recordsTitle = $('.block .cap')?.textContent;
+  const manualRow = $$('.hset').find(b => b.textContent.includes('sans capteur') && b.querySelector('b').textContent.includes('× 8'));
+  r.manualRow = manualRow?.textContent.trim();
+  manualRow?.click(); await wait(50);
+  r.manualDetail = { note: $('.note')?.textContent, bars: $$('.bar').length, hasDelete: !!$('[data-act=hdelset]') };
+  click('[data-act=hdelset]'); await wait(50);
+  r.afterDelete = { view: $('h1')?.textContent, sets: db().sets.length };
+  // détail d'une série mesurée : boutons dont « vitesse minimale »
+  $$('.hset').find(b => b.textContent.includes('120 kg')).click(); await wait(50);
+  r.measuredDetail = { buttons: $$('.repedit .btn').map(b => b.textContent), header: $('.reading .cap')?.textContent };
+} catch (e) { r.exception = String(e.stack || e); }
+document.title = 'fini';
+$('#result').textContent = JSON.stringify(r, null, 1);
+</script></body></html>
