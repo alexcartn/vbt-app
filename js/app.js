@@ -5,17 +5,27 @@ import * as store from './store.js';
 import { EXERCISES, bestPerLoad, fitProfile, loadForVelocity } from './profile.js';
 
 const $ = s => document.querySelector(s);
-const fmt = (v, d = 2) => (v == null || isNaN(v) ? '-' : v.toFixed(d));
+const fmt = (v, d = 2) => (v == null || isNaN(v) ? '-' : v.toFixed(d).replace('.', ','));
 const kg = x => (Math.round(x * 2) / 2).toString().replace('.', ',');
-const GREEN = '#34d399', YELLOW = '#fbbf24', RED = '#f87171';
 
 let db = store.load();
 const tracker = new Tracker();
-let gyro = [0, 0, 0], sensor = null, connected = false, simTimer = null, lastState = 'calib';
+let gyro = [0, 0, 0], sensor = null, connected = false, simTimer = null, lastState = 'calib', wakeLock = null;
 const S = {
   tab: 'seance', exercise: db.last.exercise, load: db.last.load,
-  recording: false, reps: [], selected: null, hz: 0, rate: { n: 0, t0: 0 }, msg: ''
+  recording: false, reps: [], selected: null, fresh: null, hz: 0, rate: { n: 0, t0: 0 }, msg: ''
 };
+
+// ---------- écran allumé pendant la séance ----------
+async function keepAwake(on) {
+  try {
+    if (on && 'wakeLock' in navigator && !wakeLock) {
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => { wakeLock = null; });
+    } else if (!on && wakeLock) { await wakeLock.release(); wakeLock = null; }
+  } catch (_) { /* non supporté ou refusé : sans gravité */ }
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && (connected || simTimer)) keepAwake(true); });
 
 // ---------- flux de données ----------
 function feed(a) {
@@ -40,8 +50,10 @@ function onAcc(a) {
 function addReps(reps) {
   S.reps.push(...reps);
   S.selected = S.reps.length - 1;
+  S.fresh = S.reps.length - 1;
   if (navigator.vibrate) navigator.vibrate(30);
   renderSeance();
+  S.fresh = null;
 }
 
 // ---------- connexion ----------
@@ -50,14 +62,14 @@ async function connect() {
   sensor = new Sensor({
     onAcc, onGyro: g => { gyro = g; },
     onStatus: (t, ok) => { S.msg = t; connected = ok; renderStatus(); renderSeance(); },
-    onDisconnect: () => { connected = false; S.msg = 'Déconnecté'; renderStatus(); renderSeance(); toast('Capteur déconnecté'); }
+    onDisconnect: () => { connected = false; keepAwake(false); S.msg = 'Déconnecté'; renderStatus(); renderSeance(); toast('Capteur déconnecté'); }
   });
   tracker.reset(); lastState = 'calib'; S.rate = { n: 0, t0: 0 };
-  try { await sensor.connect(); toast('Connecté. Pose le capteur immobile 1 s pour le calibrage.'); }
+  try { await sensor.connect(); keepAwake(true); toast('Connecté. Pose le capteur immobile 1 s pour le calibrage.'); }
   catch (e) { connected = false; S.msg = 'Échec : ' + e.message; renderStatus(); renderSeance(); }
 }
 
-async function disconnect() { if (sensor) await sensor.disconnect(); connected = false; renderStatus(); renderSeance(); }
+async function disconnect() { if (sensor) await sensor.disconnect(); connected = false; keepAwake(false); renderStatus(); renderSeance(); }
 
 // ---------- série ----------
 function startSet() { S.recording = true; S.reps = []; S.selected = null; renderSeance(); }
@@ -65,7 +77,7 @@ function startSet() { S.recording = true; S.reps = []; S.selected = null; render
 function endSet() {
   if (S.recording) S.reps.push(...tracker.flush());
   S.recording = false;
-  if (simTimer) { clearInterval(simTimer); simTimer = null; }
+  if (simTimer) { clearInterval(simTimer); simTimer = null; keepAwake(false); }
   if (S.reps.length) {
     db.sets.push({ id: Date.now(), t: Date.now(), exercise: S.exercise, load: S.load, reps: S.reps });
     db.last = { exercise: S.exercise, load: S.load };
@@ -83,7 +95,7 @@ function simulate() {
   const base = Math.min(1.1, Math.max(0.28, 1.3 - S.load * 0.0095));
   const reps = [0, 1, 2, 3, 4].map(i => { const mcv = base * (1 - 0.05 * i * (S.load / 100 + 0.4)); return { mcv, dur: 0.55 / mcv }; });
   const sim = generateSet({ reps, tiltDeg: 6, swingDeg: 2, seed: Date.now() % 10000 });
-  S.recording = true; S.reps = []; S.selected = null; renderSeance();
+  S.recording = true; S.reps = []; S.selected = null; keepAwake(true); renderSeance();
   let i = 0;
   simTimer = setInterval(() => {
     for (let k = 0; k < 10 && i < sim.acc.length; k++, i++) { gyro = sim.gyro[i]; feed(sim.acc[i]); }
@@ -92,11 +104,11 @@ function simulate() {
 }
 
 // ---------- rendu ----------
-function lossColor(v, best) { const l = (best - v) / best; return l <= 0.10 ? GREEN : l <= 0.20 ? YELLOW : RED; }
+const zone = (v, best) => { const l = (best - v) / best; return l <= 0.10 ? 'go' : l <= 0.20 ? 'mid' : 'stop'; };
 
 function statusText() {
   if (!connected) return simTimer ? 'Simulation' : (S.msg || 'Capteur non connecté');
-  if (tracker.state === 'calib') return 'Calibrage... ne bouge pas';
+  if (tracker.state === 'calib') return 'Calibrage, ne bouge pas';
   return (tracker.state === 'moving' ? 'Mouvement' : 'Prêt') + (S.hz ? ` · ${Math.round(S.hz)} Hz` : '');
 }
 function renderStatus() {
@@ -107,62 +119,65 @@ function renderStatus() {
 
 function barsSvg() {
   const reps = S.reps, n = reps.length;
-  if (!n) return `<div class="empty">Les reps apparaissent ici pendant la série.</div>`;
-  const best = Math.max(...reps.map(r => r.mcv)), top = Math.max(1, best * 1.15);
-  const W = 320, H = 150, pad = 18, bw = Math.min(44, (W - 10) / n - 8), gap = (W - n * bw) / (n + 1);
-  let out = `<svg id="bars" viewBox="0 0 ${W} ${H + 22}" width="100%">`;
+  if (!n) return `<p class="empty">${S.recording ? 'Fais ta première rep. Elle apparaît ici dès qu\'elle est terminée.' : 'Les reps de la série s\'affichent ici.'}</p>`;
+  const best = Math.max(...reps.map(r => r.mcv)), top = Math.max(1, best * 1.12);
+  const W = 320, H = 150, bw = Math.min(46, (W - 10) / n - 8), gap = (W - n * bw) / (n + 1);
+  let out = `<svg id="bars" viewBox="0 0 ${W} ${H + 24}" role="img" aria-label="Vitesse moyenne de chaque rep">`;
   reps.forEach((r, i) => {
-    const h = Math.max(4, (r.mcv / top) * (H - pad)), x = gap + i * (bw + gap), y = H - h;
-    const sel = i === S.selected;
-    out += `<rect data-act="sel" data-i="${i}" x="${x}" y="${y}" width="${bw}" height="${h}" rx="5" fill="${lossColor(r.mcv, best)}" ${sel ? 'stroke="#fff" stroke-width="2.5"' : ''}/>`;
-    out += `<text x="${x + bw / 2}" y="${y - 4}" text-anchor="middle" font-size="11" fill="#e8eaed">${fmt(r.mcv)}</text>`;
-    out += `<text x="${x + bw / 2}" y="${H + 14}" text-anchor="middle" font-size="10" fill="#9aa0a6">${i + 1}</text>`;
+    const h = Math.max(4, (r.mcv / top) * (H - 18)), x = gap + i * (bw + gap), y = H - h;
+    out += `<rect class="bar z-${zone(r.mcv, best)}${i === S.selected ? ' sel' : ''}${i === S.fresh ? ' fresh' : ''}" data-act="sel" data-i="${i}" x="${x}" y="${y}" width="${bw}" height="${h}"/>`;
+    out += `<text class="bv" x="${x + bw / 2}" y="${y - 6}">${fmt(r.mcv)}</text><text class="bn" x="${x + bw / 2}" y="${H + 16}">${i + 1}</text>`;
   });
-  return out + '</svg>';
+  return out + `<line class="base" x1="0" y1="${H}" x2="${W}" y2="${H}"/></svg>`;
 }
 
 function detailHtml() {
   const r = S.reps[S.selected];
   if (!r) return '';
-  const W = 300, H = 90, max = Math.max(...r.curve, 0.1);
-  const pts = r.curve.map((v, i) => `${(i / (r.curve.length - 1)) * W},${H - (Math.max(0, v) / max) * (H - 8)}`).join(' ');
-  return `<div class="card">
-    <div class="lbl">Rep ${S.selected + 1} · courbe de vitesse</div>
-    <svg viewBox="0 0 ${W} ${H}" width="100%" style="margin:6px 0"><polyline points="${pts}" fill="none" stroke="${GREEN}" stroke-width="3" stroke-linejoin="round"/></svg>
-    <div class="row3">
-      <div class="stat"><span>Moyenne</span><b>${fmt(r.mcv)}</b><i>m/s</i></div>
-      <div class="stat"><span>Pic</span><b>${fmt(r.peak)}</b><i>m/s</i></div>
-      <div class="stat"><span>Durée</span><b>${fmt(r.dur, 1)}</b><i>s</i></div>
-      <div class="stat"><span>Amplitude</span><b>${Math.round(r.rom * 100)}</b><i>cm</i></div>
-    </div></div>`;
+  const W = 300, H = 80, max = Math.max(...r.curve, 0.1);
+  const pts = r.curve.map((v, i) => `${(i / (r.curve.length - 1)) * W},${H - 4 - (Math.max(0, v) / max) * (H - 12)}`).join(' ');
+  return `<section class="detail">
+    <h2 class="cap">Rep ${S.selected + 1} · courbe de vitesse</h2>
+    <svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Courbe de vitesse de la rep"><polyline class="curve" points="${pts}"/></svg>
+    <dl class="facts">
+      <div><dt>Moyenne</dt><dd>${fmt(r.mcv)}<small>m/s</small></dd></div>
+      <div><dt>Pic</dt><dd>${fmt(r.peak)}<small>m/s</small></dd></div>
+      <div><dt>Durée</dt><dd>${fmt(r.dur, 1)}<small>s</small></dd></div>
+      <div><dt>Amplitude</dt><dd>${Math.round(r.rom * 100)}<small>cm</small></dd></div>
+    </dl></section>`;
 }
 
 function renderSeance() {
   if (S.tab !== 'seance') return;
   const last = S.reps[S.reps.length - 1], best = S.reps.length ? Math.max(...S.reps.map(r => r.mcv)) : 0;
   const loss = last && best ? Math.round(((best - last.mcv) / best) * 100) : 0;
+  const setup = S.recording ? '' : `
+    <div class="ex" role="group" aria-label="Mouvement">${Object.entries(EXERCISES).map(([k, n]) => `<button data-act="ex" data-v="${k}" class="${k === S.exercise ? 'on' : ''}" aria-pressed="${k === S.exercise}">${n}</button>`).join('')}</div>
+    <div class="stepper">
+      <button data-act="load" data-v="-10" aria-label="Moins 10 kilos">−10</button>
+      <button data-act="load" data-v="-2.5" aria-label="Moins 2,5 kilos">−2,5</button>
+      <label><input id="loadIn" type="number" inputmode="decimal" step="2.5" value="${S.load}" aria-label="Charge en kilos"><span>kg</span></label>
+      <button data-act="load" data-v="2.5" aria-label="Plus 2,5 kilos">+2,5</button>
+      <button data-act="load" data-v="10" aria-label="Plus 10 kilos">+10</button>
+    </div>`;
+  const dz = last ? `z-${zone(last.mcv, best)}` : "";
+  const delta = last ? (loss > 0 ? `<p class="delta ${dz}">−${loss} % par rapport à ta meilleure rep</p>` : `<p class="delta ${dz}">Meilleure rep de la série</p>`)
+    : `<p class="delta quiet">${S.recording ? 'En attente de la première rep' : 'Règle la charge, puis démarre la série.'}</p>`;
   $('#app').innerHTML = `
-    <header><h1>VBT</h1><span id="chip" class="chip"></span></header>
-    <div class="seg">${Object.entries(EXERCISES).map(([k, n]) => `<button data-act="ex" data-v="${k}" class="${k === S.exercise ? 'on' : ''}" ${S.recording ? 'disabled' : ''}>${n}</button>`).join('')}</div>
-    <div class="load">
-      <button data-act="load" data-v="-10" ${S.recording ? 'disabled' : ''}>-10</button>
-      <button data-act="load" data-v="-2.5" ${S.recording ? 'disabled' : ''}>-2,5</button>
-      <label><input id="loadIn" type="number" inputmode="decimal" step="2.5" value="${S.load}" ${S.recording ? 'disabled' : ''}><span>kg</span></label>
-      <button data-act="load" data-v="2.5" ${S.recording ? 'disabled' : ''}>+2,5</button>
-      <button data-act="load" data-v="10" ${S.recording ? 'disabled' : ''}>+10</button>
-    </div>
-    <div class="card hero">
-      <div class="lbl">${last ? `Vitesse moyenne · rep ${S.reps.length}` : 'Vitesse moyenne'}</div>
-      <div class="big" style="color:${last ? lossColor(last.mcv, best) : '#e8eaed'}">${last ? fmt(last.mcv) : '--'}<small>m/s</small></div>
-      <div class="sub">${last ? (loss > 0 ? `−${loss}% vs meilleure rep` : 'Meilleure rep') : (S.recording ? 'Fais ta première rep' : 'Appuie sur Démarrer la série')}</div>
-    </div>
-    <div class="card"><div class="lbl">Reps (touche une barre pour la détailler)</div>${barsSvg()}</div>
+    <header class="top"><span id="chip" class="chip"></span>${S.recording ? `<span class="ctx">${EXERCISES[S.exercise]} · ${kg(S.load)} kg</span>` : ''}</header>
+    ${setup}
+    <section class="reading" aria-live="polite">
+      <p class="cap">${last ? `Rep ${S.reps.length} · vitesse moyenne` : 'Vitesse moyenne'}</p>
+      <p class="num${last ? '' : ' none'}">${last ? fmt(last.mcv) : '0,00'}<span class="unit">m/s</span></p>
+      ${delta}
+    </section>
+    <section class="reps"><h2 class="cap">Reps${S.reps.length ? ' · touche une barre pour le détail' : ''}</h2>${barsSvg()}</section>
     ${detailHtml()}
-    <div class="actions">
-      ${!connected && !simTimer ? `<button class="primary" data-act="connect">Connecter le capteur</button><button class="ghost" data-act="sim">Simuler une série</button>` : ''}
-      ${(connected || simTimer) && !S.recording ? `<button class="primary" data-act="start">Démarrer la série</button>` : ''}
-      ${S.recording ? `<button class="stop" data-act="end">Terminer la série</button>` : ''}
-      ${connected && !S.recording ? `<button class="ghost" data-act="disconnect">Déconnecter</button>` : ''}
+    <div class="actions${S.recording ? ' sticky' : ''}">
+      ${!connected && !simTimer ? `<button class="btn" data-act="connect">Connecter le capteur</button><button class="btn alt" data-act="sim">Simuler une série</button>` : ''}
+      ${(connected || simTimer) && !S.recording ? `<button class="btn" data-act="start">Démarrer la série</button>` : ''}
+      ${S.recording ? `<button class="btn" data-act="end">Terminer la série</button>` : ''}
+      ${connected && !S.recording ? `<button class="btn alt" data-act="disconnect">Déconnecter</button>` : ''}
     </div>`;
   renderStatus();
 }
@@ -170,20 +185,20 @@ function renderSeance() {
 function todaySets(ex, day) { return db.sets.filter(s => s.exercise === ex && store.dayKey(s.t) === day); }
 
 function profileSvg(pts, fit, mvt) {
-  const W = 320, H = 190, L = 38, B = 24, T = 10, R = 10;
-  const loads = pts.map(p => p.load), xmax = Math.max(...loads, fit.ok ? fit.e1rm : 0) * 1.08, xmin = Math.min(...loads) * 0.8;
-  const vmax = Math.max(...pts.map(p => p.v), 0.5) * 1.1, vmin = Math.min(0, mvt - 0.05);
+  const W = 320, H = 200, L = 6, B = 40, T = 14, R = 10;
+  const loads = pts.map(p => p.load), xmax = Math.max(...loads, fit.ok ? fit.e1rm : 0) * 1.06, xmin = Math.min(...loads) * 0.8;
+  const vmax = Math.max(...pts.map(p => p.v), 0.5) * 1.12, vmin = Math.min(0, mvt - 0.05);
   const X = x => L + ((x - xmin) / (xmax - xmin || 1)) * (W - L - R), Y = v => T + (1 - (v - vmin) / (vmax - vmin)) * (H - T - B);
-  let s = `<svg viewBox="0 0 ${W} ${H}" width="100%">`;
-  s += `<line x1="${L}" y1="${Y(mvt)}" x2="${W - R}" y2="${Y(mvt)}" stroke="#fbbf24" stroke-dasharray="4 4"/><text x="${W - R}" y="${Y(mvt) - 4}" text-anchor="end" font-size="10" fill="#fbbf24">vitesse min ${fmt(mvt)}</text>`;
-  s += `<line x1="${L}" y1="${H - B}" x2="${W - R}" y2="${H - B}" stroke="#2a2e36"/><line x1="${L}" y1="${T}" x2="${L}" y2="${H - B}" stroke="#2a2e36"/>`;
-  s += `<text x="4" y="${T + 8}" font-size="10" fill="#9aa0a6">m/s</text><text x="${W - R}" y="${H - 6}" text-anchor="end" font-size="10" fill="#9aa0a6">kg</text>`;
+  let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Profil charge-vitesse">`;
+  s += `<line class="base" x1="${L}" y1="${H - B}" x2="${W - R}" y2="${H - B}"/>`;
+  s += `<line x1="${L}" y1="${Y(mvt)}" x2="${W - R}" y2="${Y(mvt)}" stroke="oklch(52% 0.015 255)" stroke-width="1.5" stroke-dasharray="5 4"/>`;
+  s += `<text x="${L}" y="${Y(mvt) - 6}" font-size="11" font-weight="600" fill="oklch(52% 0.015 255)">vitesse minimale ${fmt(mvt)} m/s</text>`;
   if (fit.ok) {
-    const x1 = xmin, x2 = fit.e1rm;
-    s += `<line x1="${X(x1)}" y1="${Y(fit.intercept + fit.slope * x1)}" x2="${X(x2)}" y2="${Y(mvt)}" stroke="${GREEN}" stroke-width="2"/>`;
-    s += `<circle cx="${X(fit.e1rm)}" cy="${Y(mvt)}" r="6" fill="#fbbf24"/>`;
+    s += `<line x1="${X(xmin)}" y1="${Y(fit.intercept + fit.slope * xmin)}" x2="${X(fit.e1rm)}" y2="${Y(mvt)}" stroke="oklch(21% 0.02 255)" stroke-width="2.5"/>`;
+    s += `<circle cx="${X(fit.e1rm)}" cy="${Y(mvt)}" r="8" fill="oklch(97.5% 0.007 95)" stroke="oklch(21% 0.02 255)" stroke-width="3"/>`;
+    s += `<text x="${X(fit.e1rm)}" y="${Y(mvt) + 26}" text-anchor="middle" font-size="12" font-weight="700" fill="oklch(21% 0.02 255)">1RM ${kg(fit.e1rm)}</text>`;
   }
-  pts.forEach(p => { s += `<circle cx="${X(p.load)}" cy="${Y(p.v)}" r="5" fill="#fff"/><text x="${X(p.load)}" y="${Y(p.v) - 9}" text-anchor="middle" font-size="10" fill="#e8eaed">${fmt(p.v)}</text><text x="${X(p.load)}" y="${H - 10}" text-anchor="middle" font-size="10" fill="#9aa0a6">${kg(p.load)}</text>`; });
+  pts.forEach(p => { s += `<circle cx="${X(p.load)}" cy="${Y(p.v)}" r="6" fill="oklch(21% 0.02 255)"/><text class="bv" x="${X(p.load)}" y="${Y(p.v) - 12}">${fmt(p.v)}</text><text class="bn" x="${X(p.load)}" y="${H - B + 16}">${kg(p.load)} kg</text>`; });
   return s + '</svg>';
 }
 
@@ -191,38 +206,34 @@ function renderProfil() {
   const day = store.dayKey(Date.now()), ex = S.exercise, mvt = db.mvt[ex];
   const pts = bestPerLoad(todaySets(ex, day)), fit = fitProfile(pts, mvt);
   let body;
-  if (!pts.length) body = `<div class="empty">Aucune série aujourd'hui pour ce mouvement.<br>Fais une montée en charge (3 à 4 charges, 1 à 2 reps rapides chacune) dans l'onglet Séance.</div>`;
+  if (!pts.length) body = `<p class="empty">Aucune série aujourd'hui pour ce mouvement. Fais une montée en charge dans l'onglet Séance : 3 ou 4 charges, 1 ou 2 reps rapides chacune.</p>`;
   else {
-    body = `<div class="card">${profileSvg(pts, fit, mvt)}</div>`;
-    if (fit.ok) {
-      const sug = [0.9, 0.75, 0.6, 0.5, 0.4].map(v => ({ v, l: loadForVelocity(fit, v) })).filter(x => x.l > 0 && x.l < fit.e1rm);
-      body = `<div class="card hero"><div class="lbl">1RM estimé du jour · ${EXERCISES[ex]}</div><div class="big">${kg(fit.e1rm)}<small>kg</small></div>
-        <div class="sub">${pts.length} charge(s) · R² ${fit.r2.toFixed(2)}</div></div>` + body +
-        (fit.warnings.length ? `<div class="card warnbox">${fit.warnings.map(w => `<div>⚠ ${w}</div>`).join('')}</div>` : '') +
-        (sug.length ? `<div class="card"><div class="lbl">Charges pour une vitesse cible</div><table>${sug.map(x => `<tr><td>${fmt(x.v)} m/s</td><td>${kg(Math.round(x.l / 2.5) * 2.5)} kg</td></tr>`).join('')}</table></div>` : '');
-    } else body = `<div class="card warnbox">⚠ ${fit.reason}</div>` + body;
+    const sug = fit.ok ? [0.9, 0.75, 0.6, 0.5, 0.4].map(v => ({ v, l: loadForVelocity(fit, v) })).filter(x => x.l > 0 && x.l < fit.e1rm) : [];
+    body = (fit.ok ? `<section class="reading"><p class="cap">1RM estimé du jour · ${EXERCISES[ex]}</p><p class="num">${kg(fit.e1rm)}<span class="unit">kg</span></p><p class="delta quiet">${pts.length} charge${pts.length > 1 ? 's' : ''} · R² ${fmt(fit.r2)}</p></section>` : `<p class="note"><strong>Pas d'estimation.</strong> ${fit.reason}</p>`) +
+      `<section class="block"><h2 class="cap">Charge et vitesse</h2>${profileSvg(pts, fit, mvt)}</section>` +
+      (fit.ok && fit.warnings.length ? fit.warnings.map(w => `<p class="note"><strong>Attention.</strong> ${w}</p>`).join('') : '') +
+      (sug.length ? `<section class="block"><h2 class="cap">Charge pour une vitesse cible</h2><table>${sug.map(x => `<tr><td>${fmt(x.v)} m/s</td><td>${kg(Math.round(x.l / 2.5) * 2.5)} kg</td></tr>`).join('')}</table></section>` : '');
   }
-  $('#app').innerHTML = `<header><h1>Profil</h1></header>
-    <div class="seg">${Object.entries(EXERCISES).map(([k, n]) => `<button data-act="ex" data-v="${k}" class="${k === ex ? 'on' : ''}">${n}</button>`).join('')}</div>
+  $('#app').innerHTML = `<header class="top"><h1>Profil</h1></header>
+    <div class="ex" role="group" aria-label="Mouvement">${Object.entries(EXERCISES).map(([k, n]) => `<button data-act="ex" data-v="${k}" class="${k === ex ? 'on' : ''}" aria-pressed="${k === ex}">${n}</button>`).join('')}</div>
     ${body}
-    <div class="card"><div class="lbl">Vitesse minimale (dernière rep réussie)</div>
-      <div class="load" style="margin-top:6px"><label><input id="mvtIn" type="number" step="0.01" value="${mvt}"><span>m/s</span></label></div>
-      <div class="sub">Valeurs de départ tirées de la littérature (squat 0,30 · bench 0,17 · deadlift 0,15). À ajuster avec tes propres échecs.</div></div>`;
+    <section class="block"><div class="setting"><label class="cap" for="mvtIn">Vitesse minimale<br>(dernière rep réussie)</label><input id="mvtIn" type="number" step="0.01" inputmode="decimal" value="${mvt}"></div>
+      <p class="hint" style="margin-top:8px">Valeurs de départ tirées de la littérature : squat 0,30 · bench 0,17 · deadlift 0,15 m/s. À ajuster avec tes propres échecs.</p></section>`;
 }
 
 function renderHisto() {
   const days = [...new Set(db.sets.map(s => store.dayKey(s.t)))].sort().reverse();
-  let body = days.length ? '' : `<div class="empty">Pas encore de série enregistrée.</div>`;
+  let body = days.length ? '' : `<p class="empty">Pas encore de série enregistrée. Elles apparaissent ici dès que tu termines une série.</p>`;
   for (const d of days) {
-    body += `<div class="day">${new Date(d + 'T12:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}</div>`;
+    body += `<h2 class="day">${new Date(d + 'T12:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}</h2>`;
     for (const ex of Object.keys(EXERCISES)) {
       const sets = todaySets(ex, d); if (!sets.length) continue;
       const fit = fitProfile(bestPerLoad(sets), db.mvt[ex]);
-      body += `<div class="card"><div class="lbl">${EXERCISES[ex]}${fit.ok ? ` · 1RM du jour ≈ ${kg(fit.e1rm)} kg` : ''}</div>` +
-        sets.map(s => `<div class="hrow"><div><b>${kg(s.load)} kg × ${s.reps.length}</b><span>${s.reps.map(r => fmt(r.mcv)).join(' · ')} m/s</span></div><button class="x" data-act="del" data-id="${s.id}">×</button></div>`).join('') + '</div>';
+      body += `<section class="block"><h3 class="cap" style="margin:0">${EXERCISES[ex]}${fit.ok ? ` · 1RM du jour ≈ ${kg(fit.e1rm)} kg` : ''}</h3>` +
+        sets.map(s => `<div class="hrow"><div><b>${kg(s.load)} kg × ${s.reps.length}</b><span>${s.reps.map(r => fmt(r.mcv)).join(' · ')} m/s</span></div><button class="x" data-act="del" data-id="${s.id}" aria-label="Supprimer cette série">×</button></div>`).join('') + '</section>';
     }
   }
-  $('#app').innerHTML = `<header><h1>Historique</h1></header>${body}`;
+  $('#app').innerHTML = `<header class="top"><h1>Historique</h1></header>${body}`;
 }
 
 function render() {
