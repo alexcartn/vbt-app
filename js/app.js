@@ -3,6 +3,8 @@ import { Sensor, bleSupported } from './ble.js';
 import { generateSet } from './sim.js';
 import * as store from './store.js';
 import { EXERCISES, bestPerLoad, fitProfile, loadForVelocity } from './profile.js';
+import { activeReps, setStats, shouldStop, speechText, rawCsv } from './feedback.js';
+import { unlockAudio, beepRep, beepStop, speak } from './audio.js';
 
 const $ = s => document.querySelector(s);
 const fmt = (v, d = 2) => (v == null || isNaN(v) ? '-' : v.toFixed(d).replace('.', ','));
@@ -13,7 +15,9 @@ const tracker = new Tracker();
 let gyro = [0, 0, 0], sensor = null, connected = false, simTimer = null, lastState = 'calib', wakeLock = null;
 const S = {
   tab: 'seance', exercise: db.last.exercise, load: db.last.load,
-  recording: false, reps: [], selected: null, fresh: null, hz: 0, rate: { n: 0, t0: 0 }, msg: ''
+  recording: false, reps: [], selected: null, fresh: null, hz: 0, rate: { n: 0, t0: 0 }, msg: '',
+  setId: null,                       // id de la série enregistrée affichée (pour répercuter les corrections de reps)
+  raw: [], pre: [], rawMeta: null    // échantillons bruts de la dernière série (export CSV) et 1,5 s qui précède
 };
 
 // ---------- écran allumé pendant la séance ----------
@@ -29,6 +33,9 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 
 // ---------- flux de données ----------
 function feed(a) {
+  const row = [+a[0].toFixed(5), +a[1].toFixed(5), +a[2].toFixed(5), +gyro[0].toFixed(3), +gyro[1].toFixed(3), +gyro[2].toFixed(3)];
+  if (S.recording) S.raw.push(row);
+  else { S.pre.push(row); if (S.pre.length > 150) S.pre.shift(); }   // garde 1,5 s avant le début : permet de rejouer le calibrage
   const reps = tracker.push(a, gyro);
   if (tracker.state !== lastState) { lastState = tracker.state; renderStatus(); }
   if (reps.length && S.recording) addReps(reps);
@@ -51,9 +58,53 @@ function addReps(reps) {
   S.reps.push(...reps);
   S.selected = S.reps.length - 1;
   S.fresh = S.reps.length - 1;
-  if (navigator.vibrate) navigator.vibrate(30);
+  const st = setStats(S.reps), cfg = db.settings, stop = shouldStop(S.reps, cfg.lossStop);
+  if (navigator.vibrate) navigator.vibrate(stop ? [200, 100, 200, 100, 200] : 30);
+  if (stop) {                                           // seuil de perte de vitesse atteint : alerte distincte d'un bip de rep
+    if (cfg.sound) beepStop();
+    if (cfg.voice) speak(`Arrête. Moins ${Math.round(st.loss * 100)} pour cent`);
+  } else if (st.last) {
+    if (cfg.sound) beepRep(zone(st.last.mcv, st.best));
+    if (cfg.voice) speak(speechText(st.last.mcv));
+  }
   renderSeance();
   S.fresh = null;
+}
+
+// ---------- corrections de reps (rep fantôme, rep ratée) ----------
+function persistEdit() {
+  if (!S.setId) return;                                 // série en cours : rien d'enregistré, S.reps suffit
+  const i = db.sets.findIndex(s => s.id === S.setId);
+  if (i >= 0) { if (S.reps.length) db.sets[i].reps = S.reps; else { db.sets.splice(i, 1); S.setId = null; } }
+  store.save(db);
+}
+function toggleFailed(i) {
+  const r = S.reps[i]; if (!r) return;
+  if (r.failed) delete r.failed; else r.failed = true;
+  persistEdit(); renderSeance();
+}
+function deleteRep(i) {
+  if (!S.reps[i]) return;
+  S.reps.splice(i, 1);
+  S.selected = S.reps.length ? Math.min(i, S.reps.length - 1) : null;
+  persistEdit(); renderSeance();
+  toast('Rep supprimée');
+}
+
+// ---------- export ----------
+function download(name, text, type) {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const a = document.createElement('a');
+  a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+const stamp = t => new Date(t).toISOString().slice(0, 16).replace(/[:T]/g, '-');
+function exportRaw() {
+  const m = S.rawMeta || { exercise: S.exercise, load: S.load, t: Date.now() };
+  download(`vbt_${m.exercise}_${m.load}kg_${stamp(m.t)}.csv`, rawCsv(S.raw.map((r, i) => [i, ...r]), { ...m, hz: Math.round(S.hz || 100) }), 'text/csv');
+}
+function exportHistory() {
+  download(`vbt_historique_${stamp(Date.now())}.json`, JSON.stringify({ exportedAt: new Date().toISOString(), sets: db.sets, mvt: db.mvt }, null, 1), 'application/json');
 }
 
 // ---------- connexion ----------
@@ -72,14 +123,20 @@ async function connect() {
 async function disconnect() { if (sensor) await sensor.disconnect(); connected = false; keepAwake(false); renderStatus(); renderSeance(); }
 
 // ---------- série ----------
-function startSet() { S.recording = true; S.reps = []; S.selected = null; renderSeance(); }
+function startSet() {
+  S.recording = true; S.reps = []; S.selected = null; S.setId = null;
+  S.raw = S.pre; S.pre = []; S.rawMeta = { exercise: S.exercise, load: S.load, t: Date.now() };
+  renderSeance();
+}
 
 function endSet() {
   if (S.recording) S.reps.push(...tracker.flush());
   S.recording = false;
   if (simTimer) { clearInterval(simTimer); simTimer = null; keepAwake(false); }
+  S.setId = null;
   if (S.reps.length) {
-    db.sets.push({ id: Date.now(), t: Date.now(), exercise: S.exercise, load: S.load, reps: S.reps });
+    S.setId = Date.now();
+    db.sets.push({ id: S.setId, t: S.setId, exercise: S.exercise, load: S.load, reps: S.reps });
     db.last = { exercise: S.exercise, load: S.load };
     store.save(db);
     toast(`Série enregistrée : ${S.reps.length} reps à ${kg(S.load)} kg`);
@@ -95,7 +152,9 @@ function simulate() {
   const base = Math.min(1.1, Math.max(0.28, 1.3 - S.load * 0.0095));
   const reps = [0, 1, 2, 3, 4].map(i => { const mcv = base * (1 - 0.05 * i * (S.load / 100 + 0.4)); return { mcv, dur: 0.55 / mcv }; });
   const sim = generateSet({ reps, tiltDeg: 6, swingDeg: 2, seed: Date.now() % 10000 });
-  S.recording = true; S.reps = []; S.selected = null; keepAwake(true); renderSeance();
+  S.recording = true; S.reps = []; S.selected = null; S.setId = null; S.raw = []; S.pre = [];
+  S.rawMeta = { exercise: S.exercise, load: S.load, t: Date.now() };
+  keepAwake(true); renderSeance();
   let i = 0;
   simTimer = setInterval(() => {
     for (let k = 0; k < 10 && i < sim.acc.length; k++, i++) { gyro = sim.gyro[i]; feed(sim.acc[i]); }
@@ -120,13 +179,15 @@ function renderStatus() {
 function barsSvg() {
   const reps = S.reps, n = reps.length;
   if (!n) return `<p class="empty">${S.recording ? 'Fais ta première rep. Elle apparaît ici dès qu\'elle est terminée.' : 'Les reps de la série s\'affichent ici.'}</p>`;
-  const best = Math.max(...reps.map(r => r.mcv)), top = Math.max(1, best * 1.12);
+  const best = setStats(reps).best || Math.max(...reps.map(r => r.mcv)), top = Math.max(1, best * 1.12);
   const W = 320, H = 150, bw = Math.min(46, (W - 10) / n - 8), gap = (W - n * bw) / (n + 1);
   let out = `<svg id="bars" viewBox="0 0 ${W} ${H + 24}" role="img" aria-label="Vitesse moyenne de chaque rep">`;
   reps.forEach((r, i) => {
     const h = Math.max(4, (r.mcv / top) * (H - 18)), x = gap + i * (bw + gap), y = H - h;
-    out += `<rect class="bar z-${zone(r.mcv, best)}${i === S.selected ? ' sel' : ''}${i === S.fresh ? ' fresh' : ''}" data-act="sel" data-i="${i}" x="${x}" y="${y}" width="${bw}" height="${h}"/>`;
-    out += `<text class="bv" x="${x + bw / 2}" y="${y - 6}">${fmt(r.mcv)}</text><text class="bn" x="${x + bw / 2}" y="${H + 16}">${i + 1}</text>`;
+    // rep ratée : contour pointillé et valeur barrée (jamais la couleur seule)
+    const cls = r.failed ? 'failed' : `z-${zone(r.mcv, best)}`;
+    out += `<rect class="bar ${cls}${i === S.selected ? ' sel' : ''}${i === S.fresh ? ' fresh' : ''}" data-act="sel" data-i="${i}" x="${x}" y="${y}" width="${bw}" height="${h}"/>`;
+    out += `<text class="bv${r.failed ? ' fail' : ''}" x="${x + bw / 2}" y="${y - 6}">${fmt(r.mcv)}</text><text class="bn" x="${x + bw / 2}" y="${H + 16}">${i + 1}</text>`;
   });
   return out + `<line class="base" x1="0" y1="${H}" x2="${W}" y2="${H}"/></svg>`;
 }
@@ -137,21 +198,31 @@ function detailHtml() {
   const W = 300, H = 80, max = Math.max(...r.curve, 0.1);
   const pts = r.curve.map((v, i) => `${(i / (r.curve.length - 1)) * W},${H - 4 - (Math.max(0, v) / max) * (H - 12)}`).join(' ');
   return `<section class="detail">
-    <h2 class="cap">Rep ${S.selected + 1} · courbe de vitesse</h2>
+    <h2 class="cap">Rep ${S.selected + 1}${r.failed ? ' · ratée, non comptée' : ''} · courbe de vitesse</h2>
     <svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Courbe de vitesse de la rep"><polyline class="curve" points="${pts}"/></svg>
     <dl class="facts">
       <div><dt>Moyenne</dt><dd>${fmt(r.mcv)}<small>m/s</small></dd></div>
       <div><dt>Pic</dt><dd>${fmt(r.peak)}<small>m/s</small></dd></div>
       <div><dt>Durée</dt><dd>${fmt(r.dur, 1)}<small>s</small></dd></div>
       <div><dt>Amplitude</dt><dd>${Math.round(r.rom * 100)}<small>cm</small></dd></div>
-    </dl></section>`;
+    </dl>
+    <div class="repedit">
+      <button class="btn alt sm" data-act="fail">${r.failed ? 'Rep valide' : 'Rep ratée'}</button>
+      <button class="btn alt sm" data-act="delrep">Supprimer</button>
+    </div></section>`;
 }
 
 function renderSeance() {
   if (S.tab !== 'seance') return;
-  const last = S.reps[S.reps.length - 1], best = S.reps.length ? Math.max(...S.reps.map(r => r.mcv)) : 0;
-  const loss = last && best ? Math.round(((best - last.mcv) / best) * 100) : 0;
+  const st = setStats(S.reps), last = st.last, best = st.best, cfg = db.settings;
+  const loss = Math.round(st.loss * 100), stop = shouldStop(S.reps, cfg.lossStop);
+  const lastNo = last ? S.reps.lastIndexOf(last) + 1 : 0;
+  const seg = (act, items, isOn) => items.map(([v, l]) => `<button data-act="${act}" data-v="${v}" class="${isOn(v) ? 'on' : ''}" aria-pressed="${isOn(v)}">${l}</button>`).join('');
   const setup = S.recording ? '' : `
+    <section class="opts" aria-label="Retour pendant la série">
+      <div class="optrow"><span class="cap" id="lossLbl">Alerte d'arrêt</span><div class="seg" role="group" aria-labelledby="lossLbl">${seg('loss', [[0, 'Off'], [0.1, '10 %'], [0.2, '20 %'], [0.3, '30 %']], v => cfg.lossStop === v)}</div></div>
+      <div class="optrow"><span class="cap" id="fbLbl">Retour</span><div class="seg" role="group" aria-labelledby="fbLbl">${seg('tog', [['sound', 'Son'], ['voice', 'Voix']], v => cfg[v])}</div></div>
+    </section>
     <div class="ex" role="group" aria-label="Mouvement">${Object.entries(EXERCISES).map(([k, n]) => `<button data-act="ex" data-v="${k}" class="${k === S.exercise ? 'on' : ''}" aria-pressed="${k === S.exercise}">${n}</button>`).join('')}</div>
     <div class="stepper">
       <button data-act="load" data-v="-10" aria-label="Moins 10 kilos">−10</button>
@@ -161,13 +232,14 @@ function renderSeance() {
       <button data-act="load" data-v="10" aria-label="Plus 10 kilos">+10</button>
     </div>`;
   const dz = last ? `z-${zone(last.mcv, best)}` : "";
-  const delta = last ? (loss > 0 ? `<p class="delta ${dz}">−${loss} % par rapport à ta meilleure rep</p>` : `<p class="delta ${dz}">Meilleure rep de la série</p>`)
-    : `<p class="delta quiet">${S.recording ? 'En attente de la première rep' : 'Règle la charge, puis démarre la série.'}</p>`;
+  const delta = (last ? (loss > 0 ? `<p class="delta ${dz}">−${loss} % par rapport à ta meilleure rep</p>` : `<p class="delta ${dz}">Meilleure rep de la série</p>`)
+    : `<p class="delta quiet">${S.recording ? 'En attente de la première rep' : 'Règle la charge, puis démarre la série.'}</p>`)
+    + (stop ? `<p class="stopbar" role="alert">Perte de ${loss} % : arrête la série</p>` : '');
   $('#app').innerHTML = `
     <header class="top"><span id="chip" class="chip"></span>${S.recording ? `<span class="ctx">${EXERCISES[S.exercise]} · ${kg(S.load)} kg</span>` : ''}</header>
     ${setup}
     <section class="reading" aria-live="polite">
-      <p class="cap">${last ? `Rep ${S.reps.length} · vitesse moyenne` : 'Vitesse moyenne'}</p>
+      <p class="cap">${last ? `Rep ${lastNo} · vitesse moyenne` : 'Vitesse moyenne'}</p>
       <p class="num${last ? '' : ' none'}">${last ? fmt(last.mcv) : '0,00'}<span class="unit">m/s</span></p>
       ${delta}
     </section>
@@ -177,6 +249,7 @@ function renderSeance() {
       ${!connected && !simTimer ? `<button class="btn" data-act="connect">Connecter le capteur</button><button class="btn alt" data-act="sim">Simuler une série</button>` : ''}
       ${(connected || simTimer) && !S.recording ? `<button class="btn" data-act="start">Démarrer la série</button>` : ''}
       ${S.recording ? `<button class="btn" data-act="end">Terminer la série</button>` : ''}
+      ${!S.recording && S.raw.length > 50 ? `<button class="btn alt" data-act="exportraw">Exporter les données brutes (CSV)</button>` : ''}
       ${connected && !S.recording ? `<button class="btn alt" data-act="disconnect">Déconnecter</button>` : ''}
     </div>`;
   renderStatus();
@@ -230,10 +303,11 @@ function renderHisto() {
       const sets = todaySets(ex, d); if (!sets.length) continue;
       const fit = fitProfile(bestPerLoad(sets), db.mvt[ex]);
       body += `<section class="block"><h3 class="cap" style="margin:0">${EXERCISES[ex]}${fit.ok ? ` · 1RM du jour ≈ ${kg(fit.e1rm)} kg` : ''}</h3>` +
-        sets.map(s => `<div class="hrow"><div><b>${kg(s.load)} kg × ${s.reps.length}</b><span>${s.reps.map(r => fmt(r.mcv)).join(' · ')} m/s</span></div><button class="x" data-act="del" data-id="${s.id}" aria-label="Supprimer cette série">×</button></div>`).join('') + '</section>';
+        sets.map(s => `<div class="hrow"><div><b>${kg(s.load)} kg × ${activeReps(s.reps).length}${s.reps.some(r => r.failed) ? ' · ratée' : ''}</b><span>${s.reps.map(r => r.failed ? `<s>${fmt(r.mcv)}</s>` : fmt(r.mcv)).join(' · ')} m/s</span></div><button class="x" data-act="del" data-id="${s.id}" aria-label="Supprimer cette série">×</button></div>`).join('') + '</section>';
     }
   }
-  $('#app').innerHTML = `<header class="top"><h1>Historique</h1></header>${body}`;
+  $('#app').innerHTML = `<header class="top"><h1>Historique</h1></header>${body}` +
+    (db.sets.length ? `<button class="btn alt" data-act="exporthist">Exporter l'historique (JSON)</button>` : '');
 }
 
 function render() {
@@ -248,7 +322,14 @@ function toast(t) { const el = $('#toast'); el.textContent = t; el.classList.add
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-act]'); if (!el) return;
   const act = el.dataset.act, v = el.dataset.v;
-  if (act === 'ex') { S.exercise = v; db.last.exercise = v; store.save(db); render(); }
+  unlockAudio();                                      // Chrome n'autorise le son qu'après un toucher
+  if (act === 'loss') { db.settings.lossStop = parseFloat(v); store.save(db); renderSeance(); }
+  else if (act === 'tog') { db.settings[v] = !db.settings[v]; store.save(db); if (db.settings[v] && v === 'voice') speak('Voix activée'); renderSeance(); }
+  else if (act === 'fail') toggleFailed(S.selected);
+  else if (act === 'delrep') deleteRep(S.selected);
+  else if (act === 'exportraw') exportRaw();
+  else if (act === 'exporthist') exportHistory();
+  else if (act === 'ex') { S.exercise = v; db.last.exercise = v; store.save(db); render(); }
   else if (act === 'load') { S.load = Math.max(0, S.load + parseFloat(v)); db.last.load = S.load; store.save(db); renderSeance(); }
   else if (act === 'sel') { S.selected = parseInt(el.dataset.i, 10); renderSeance(); }
   else if (act === 'connect') connect();

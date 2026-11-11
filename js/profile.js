@@ -8,8 +8,9 @@ export const MVT_DEFAULT = { squat: 0.30, bench: 0.17, deadlift: 0.15 };
 export function bestPerLoad(sets) {
   const best = new Map();
   for (const s of sets) {
-    if (!s.reps || !s.reps.length) continue;
-    const v = Math.max(...s.reps.map(r => r.mcv));
+    const ok = (s.reps || []).filter(r => !r.failed);   // une rep ratée ne fixe pas la meilleure vitesse
+    if (!ok.length) continue;
+    const v = Math.max(...ok.map(r => r.mcv));
     if (!best.has(s.load) || v > best.get(s.load)) best.set(s.load, v);
   }
   return [...best].map(([load, v]) => ({ load, v })).sort((a, b) => a.load - b.load);

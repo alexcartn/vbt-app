@@ -39,10 +39,14 @@ button:disabled { opacity: 0.4; }
 .cap { font-size: var(--t-label); font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3); }
 
 /* réglages (hors série) */
-.ex { display: grid; grid-template-columns: repeat(3, 1fr); border: 1.5px solid var(--ink); border-radius: 4px; overflow: hidden; }
-.ex button { padding: 14px 0; border: 0; background: transparent; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; font-size: var(--t-body); }
-.ex button + button { border-inline-start: 1.5px solid var(--ink); }
-.ex button.on { background: var(--ink); color: var(--paper); }
+.ex, .seg { display: grid; border: 1.5px solid var(--ink); border-radius: 4px; overflow: hidden; }
+.ex { grid-template-columns: repeat(3, 1fr); }
+.seg { grid-auto-flow: column; grid-auto-columns: 1fr; }
+.ex button, .seg button { padding: 14px 0; border: 0; background: transparent; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; font-size: var(--t-body); }
+.ex button + button, .seg button + button { border-inline-start: 1.5px solid var(--ink); }
+.ex button.on, .seg button.on { background: var(--ink); color: var(--paper); }
+.opts { display: flex; flex-direction: column; gap: var(--space-sm); }
+.optrow { display: grid; grid-template-columns: 7.5rem 1fr; align-items: center; gap: var(--space-md); }
 .stepper { display: grid; grid-template-columns: 56px 56px 1fr 56px 56px; gap: var(--space-sm); align-items: center; }
 .stepper button { height: 56px; border: 1.5px solid var(--ink); border-radius: 4px; background: transparent; font-weight: 700; font-size: var(--t-lead); }
 .stepper label { display: flex; align-items: center; justify-content: center; gap: var(--space-sm); }
@@ -58,6 +62,7 @@ button:disabled { opacity: 0.4; }
 .delta[class*="z-"]::before { content: ""; width: 16px; height: 16px; background: var(--c); flex: none; }
 .delta.z-go { --c: var(--go); } .delta.z-mid { --c: var(--mid); } .delta.z-stop { --c: var(--stop); }
 .delta.quiet { color: var(--ink-2); font-weight: 400; font-size: var(--t-body); }
+.stopbar { margin-top: var(--space-sm); padding: 14px var(--space-md); border: 3px solid var(--stop); color: var(--stop-ink); font: 800 1.6rem/1.1 var(--display); text-transform: uppercase; letter-spacing: 0.04em; }
 
 /* reps */
 .reps { border-top: 1.5px solid var(--ink); padding-top: var(--space-sm); display: flex; flex-direction: column; gap: var(--space-sm); }
@@ -65,7 +70,9 @@ button:disabled { opacity: 0.4; }
 #bars { display: block; width: 100%; height: auto; overflow: visible; }
 .bar { fill: var(--c); cursor: pointer; transform-box: fill-box; transform-origin: bottom; }
 .bar.z-go { --c: var(--go); } .bar.z-mid { --c: var(--mid); } .bar.z-stop { --c: var(--stop); }
-.bar.sel { stroke: var(--ink); stroke-width: 3; }
+.bar.failed { fill: none; stroke: var(--ink-3); stroke-width: 2; stroke-dasharray: 5 4; }
+.bar.sel { stroke: var(--ink); stroke-width: 3; stroke-dasharray: none; }
+.bv.fail { fill: var(--ink-3); text-decoration: line-through; }
 .bar.fresh { animation: grow 320ms var(--ease); }
 @keyframes grow { from { transform: scaleY(0.05); } }
 .bv { font: 700 12px var(--text); fill: var(--ink); text-anchor: middle; }
@@ -88,7 +95,9 @@ button:disabled { opacity: 0.4; }
 .actions.sticky { position: sticky; bottom: calc(60px + env(safe-area-inset-bottom)); background: var(--paper); padding-block: var(--space-sm); box-shadow: 0 -12px 12px -4px var(--paper); }
 .btn { min-height: 56px; padding: 0 var(--space-lg); border: 1.5px solid var(--ink); border-radius: 4px; background: var(--ink); color: var(--paper); font-weight: 700; font-size: var(--t-lead); text-transform: uppercase; letter-spacing: 0.06em; }
 .btn.alt { background: transparent; color: var(--ink); }
+.btn.sm { min-height: 48px; font-size: var(--t-body); padding: 0 var(--space-sm); }
 .btn:active { transform: translateY(1px); }
+.repedit { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-sm); margin-top: var(--space-xs); }
 
 /* profil, historique */
 .chart { width: 100%; height: auto; display: block; }

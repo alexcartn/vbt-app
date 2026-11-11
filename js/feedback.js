@@ -1,0 +1,39 @@
+// Logique pure du retour pendant la série : perte de vitesse, seuil d'arrêt, texte vocal, export brut.
+
+/** Reps comptées : on écarte celles marquées ratées. */
+export const activeReps = reps => reps.filter(r => !r.failed);
+
+/** Meilleure vitesse, dernière rep et perte de vitesse (0 à 1) de la dernière rep contre la meilleure. */
+export function setStats(reps) {
+  const act = activeReps(reps);
+  if (!act.length) return { best: 0, last: null, loss: 0, n: 0 };
+  const best = Math.max(...act.map(r => r.mcv)), last = act[act.length - 1];
+  return { best, last, loss: best > 0 ? Math.max(0, (best - last.mcv) / best) : 0, n: act.length };
+}
+
+/** Vrai quand la perte de vitesse atteint le seuil (0 = désactivé). Il faut au moins 2 reps. */
+export function shouldStop(reps, threshold) {
+  if (!(threshold > 0)) return false;
+  const s = setStats(reps);
+  // tolérance : 0,8 -> 0,64 vaut 20 % pile malgré les arrondis flottants
+  return s.n >= 2 && s.loss >= threshold - 1e-9;
+}
+
+const WORDS = ['zéro', 'un', 'deux', 'trois', 'quatre', 'cinq', 'six', 'sept', 'huit', 'neuf'];
+
+/** "0,75" lu chiffre par chiffre ("zéro virgule sept cinq") : la synthèse française lit mal les décimales. */
+export function speechText(v) {
+  const [i, d] = v.toFixed(2).split('.');
+  return [...i].map(c => WORDS[+c]).join(' ') + ' virgule ' + [...d].map(c => WORDS[+c]).join(' ');
+}
+
+/** CSV des échantillons bruts rejouables : une ligne i,ax,ay,az,gx,gy,gz (g et °/s), méta en commentaires. */
+export function rawCsv(rows, meta) {
+  const date = new Date(meta.t).toISOString();
+  return [
+    `# vbt-raw hz=${meta.hz} accel=g gyro=deg/s`,
+    `# exercice=${meta.exercise} charge=${meta.load}kg date=${date}`,
+    'i,ax,ay,az,gx,gy,gz',
+    ...rows.map(r => r.join(','))
+  ].join('\n') + '\n';
+}
