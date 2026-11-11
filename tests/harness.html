@@ -1,0 +1,20 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../style.css"></head><body>
+<div id="app"></div><nav id="nav"><button data-v="seance" class="on">Séance</button><button data-v="profil">Profil</button><button data-v="histo">Historique</button></nav><div id="toast"></div>
+<script>window.addEventListener('error', e => document.title = 'ERREUR: ' + e.message);</script>
+<script type="module">
+import '../js/app.js';
+const q = new URLSearchParams(location.search), wait = ms => new Promise(r => setTimeout(r, ms));
+const click = s => document.querySelector(s).click();
+await wait(200);
+if (q.get('scenario') === 'live') { click('[data-act=sim]'); await wait(2300); }          // pendant la série (milieu)
+if (q.get('scenario') === 'done' || q.get('scenario') === 'profil' || q.get('scenario') === 'histo') {
+  for (const load of [60, 90, 120]) {                                                       // 3 séries simulées = une montée en charge
+    document.querySelector('#loadIn').value = load; document.querySelector('#loadIn').dispatchEvent(new Event('change', { bubbles: true }));
+    click('[data-act=sim]'); await wait(4200); click('[data-act=end]'); await wait(100);
+  }
+  if (q.get('scenario') === 'profil') { click('#nav button[data-v=profil]'); }
+  if (q.get('scenario') === 'histo') { click('#nav button[data-v=histo]'); }
+}
+document.title = 'pret';
+</script></body></html>

@@ -1,0 +1,42 @@
+:root { color-scheme: dark; --bg:#0e1014; --card:#171a21; --line:#2a2e36; --txt:#e8eaed; --mut:#9aa0a6; --green:#34d399; --blue:#2563eb; }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+body { margin:0; background:var(--bg); color:var(--txt); font:15px system-ui,sans-serif; }
+#app { max-width:520px; margin:0 auto; padding:12px 14px calc(84px + env(safe-area-inset-bottom)); padding-top:calc(12px + env(safe-area-inset-top)); }
+header { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+h1 { font-size:20px; margin:0; }
+.chip { font-size:12px; padding:4px 10px; border-radius:999px; background:var(--card); color:var(--mut); }
+.chip.ok { color:#06281d; background:var(--green); font-weight:700; } .chip.warn { color:#2a1d00; background:#fbbf24; font-weight:700; }
+.seg { display:flex; gap:6px; margin-bottom:10px; }
+.seg button { flex:1; padding:11px 0; border:0; border-radius:10px; background:var(--card); color:var(--mut); font:inherit; font-weight:600; }
+.seg button.on { background:var(--blue); color:#fff; }
+button:disabled { opacity:.45; }
+.load { display:flex; gap:6px; align-items:center; margin-bottom:10px; }
+.load button { padding:11px 0; flex:1; border:0; border-radius:10px; background:var(--card); color:var(--txt); font:inherit; font-weight:600; }
+.load label { flex:2; display:flex; align-items:baseline; justify-content:center; gap:4px; background:var(--card); border-radius:10px; padding:6px; }
+.load input { width:90px; background:transparent; border:0; color:var(--txt); font:700 24px system-ui; text-align:center; }
+.load label span { color:var(--mut); }
+.card { background:var(--card); border-radius:14px; padding:12px; margin-bottom:10px; }
+.card.hero { text-align:center; }
+.lbl { font-size:11px; color:var(--mut); text-transform:uppercase; letter-spacing:.5px; }
+.big { font-size:64px; font-weight:800; line-height:1.05; letter-spacing:-2px; font-variant-numeric:tabular-nums; }
+.big small { font-size:16px; font-weight:500; color:var(--mut); letter-spacing:0; margin-left:6px; }
+.sub { font-size:12px; color:var(--mut); margin-top:4px; }
+.row3 { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; text-align:center; }
+.stat { background:var(--bg); border-radius:10px; padding:7px 2px; }
+.stat span { display:block; font-size:9px; color:var(--mut); text-transform:uppercase; }
+.stat b { font-size:17px; } .stat i { display:block; font-size:9px; font-style:normal; color:var(--mut); }
+.empty { color:var(--mut); text-align:center; padding:18px 8px; font-size:13px; line-height:1.5; }
+.actions { display:flex; flex-direction:column; gap:8px; }
+.actions button { padding:15px; border:0; border-radius:12px; font:inherit; font-weight:700; font-size:16px; }
+.primary { background:var(--blue); color:#fff; } .stop { background:#ef4444; color:#fff; } .ghost { background:var(--card); color:var(--mut); font-weight:600!important; }
+#nav { position:fixed; left:0; right:0; bottom:0; display:flex; background:#12151b; border-top:1px solid var(--line); padding-bottom:env(safe-area-inset-bottom); }
+#nav button { flex:1; padding:14px 0; border:0; background:transparent; color:var(--mut); font:inherit; font-weight:600; }
+#nav button.on { color:#fff; box-shadow:inset 0 2px 0 var(--green); }
+#toast { position:fixed; left:14px; right:14px; bottom:calc(74px + env(safe-area-inset-bottom)); background:#1f2937; color:var(--txt); padding:12px 14px; border-radius:12px; opacity:0; pointer-events:none; transition:opacity .2s; text-align:center; font-size:13px; }
+#toast.show { opacity:1; }
+.warnbox { color:#fbbf24; font-size:13px; line-height:1.5; }
+table { width:100%; border-collapse:collapse; margin-top:6px; } td { padding:7px 0; border-bottom:1px solid var(--line); } td:last-child { text-align:right; font-weight:700; }
+.day { margin:16px 2px 6px; font-weight:700; text-transform:capitalize; }
+.hrow { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--line); }
+.hrow:last-child { border-bottom:0; } .hrow span { display:block; font-size:12px; color:var(--mut); margin-top:2px; }
+.x { background:transparent; border:0; color:var(--mut); font-size:22px; padding:4px 10px; }
