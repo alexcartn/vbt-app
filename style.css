@@ -133,6 +133,13 @@ td:last-child { text-align: right; font: 800 1.5rem/1 var(--display); letter-spa
 .prow { display: flex; gap: var(--space-sm); }
 .facts small { display: inline; }
 
+/* minuteur de repos : s'inverse (encre pleine) quand le repos est terminé, lisible à 2 m */
+.rest { display: flex; justify-content: space-between; align-items: center; gap: var(--space-md); padding: var(--space-sm) 0; border-block: 1.5px solid var(--ink); }
+.rest .stat { margin-top: 0; }
+.rest.over { background: var(--ink); color: var(--paper); padding-inline: var(--space-md); margin-inline: calc(var(--space-md) * -1); border-color: var(--ink); }
+.rest.over .cap, .rest.over .stat .unit { color: var(--paper); }
+.rest.over .btn { color: var(--paper); border-color: var(--paper); }
+
 /* navigation et message */
 #nav { position: fixed; inset: auto 0 0 0; display: flex; background: var(--paper); border-top: 1px solid var(--rule); padding-bottom: env(safe-area-inset-bottom); }
 #nav button { flex: 1; min-height: 60px; border: 0; background: transparent; color: var(--ink-3); font-weight: 600; font-size: var(--t-body); text-transform: uppercase; letter-spacing: 0.06em; border-top: 3px solid transparent; }

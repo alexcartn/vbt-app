@@ -5,7 +5,8 @@ const KEY = 'vbt.v1';
 export const DEFAULT_PROFILE_NAME = 'Alexandre';
 
 // lossStop : perte de vitesse (0 à 1) qui déclenche l'alerte d'arrêt, 0 = désactivée
-const SETTINGS_DEFAULT = { lossStop: 0.2, sound: true };
+// rest : durée du repos en secondes après une série, 0 = pas de minuteur
+const SETTINGS_DEFAULT = { lossStop: 0.2, sound: true, rest: 0 };
 const empty = () => ({
   sets: [], mvt: { ...MVT_DEFAULT }, last: { exercise: 'squat', load: 60 }, settings: { ...SETTINGS_DEFAULT },
   profiles: [], activeProfile: null

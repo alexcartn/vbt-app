@@ -1,4 +1,4 @@
-// Logique pure du retour pendant la série : perte de vitesse, seuil d'arrêt, export brut.
+// Logique pure du retour pendant la série : perte de vitesse, seuil d'arrêt, minuteur de repos, export brut.
 
 /** Reps comptées : on écarte celles marquées ratées. */
 export const activeReps = reps => reps.filter(r => !r.failed);
@@ -28,4 +28,10 @@ export function rawCsv(rows, meta) {
     'i,ax,ay,az,gx,gy,gz',
     ...rows.map(r => r.join(','))
   ].join('\n') + '\n';
+}
+
+/** Minuteur de repos : ms restantes (négatif = dépassement) -> compte à rebours "2:47", puis "+0:12" une fois la durée écoulée. */
+export function restDisplay(remainingMs) {
+  const over = remainingMs <= 0, sec = over ? Math.floor(-remainingMs / 1000) : Math.ceil(remainingMs / 1000);
+  return { over, text: `${over ? '+' : ''}${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}` };
 }

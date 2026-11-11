@@ -3,9 +3,9 @@ import { Sensor, bleSupported } from './ble.js';
 import { generateSet } from './sim.js';
 import * as store from './store.js';
 import { EXERCISES, MVT_DEFAULT, bestPerLoad, fitProfile, loadForVelocity } from './profile.js';
-import { activeReps, setStats, shouldStop, rawCsv } from './feedback.js';
+import { activeReps, setStats, shouldStop, rawCsv, restDisplay } from './feedback.js';
 import { sessions, progress, loadsUsed, setSummary } from './history.js';
-import { unlockAudio, beepRep, beepStop } from './audio.js';
+import { unlockAudio, beepRep, beepStop, beepReady } from './audio.js';
 
 const $ = s => document.querySelector(s);
 const fmt = (v, d = 2) => (v == null || isNaN(v) ? '-' : v.toFixed(d).replace('.', ','));
@@ -22,6 +22,7 @@ const S = {
   tab: 'seance', exercise: db.last.exercise, load: db.last.load,
   recording: false, reps: [], selected: null, fresh: null, hz: 0, rate: { n: 0, t0: 0 }, msg: '',
   h: { view: 'list', ex: db.last.exercise, metric: 'e1rm', load: null, setId: null, sel: null },   // onglet Historique
+  restEnd: null,                     // minuteur de repos : instant (ms) où le repos est terminé
   setId: null,                       // id de la série enregistrée affichée (pour répercuter les corrections de reps)
   raw: [], pre: [], rawMeta: null    // échantillons bruts de la dernière série (export CSV) et 1,5 s qui précède
 };
@@ -74,6 +75,38 @@ function addReps(reps) {
   renderSeance();
   S.fresh = null;
 }
+
+// ---------- minuteur de repos (facultatif) ----------
+let restTimer = null, restBeeped = false;
+function restTick() {
+  if (!S.restEnd) return;
+  const d = restDisplay(S.restEnd - Date.now());
+  if (d.over && !restBeeped) {                          // repos terminé : un seul signal
+    restBeeped = true;
+    if (db.settings.sound) beepReady();
+    if (navigator.vibrate) navigator.vibrate([150, 80, 150]);
+  }
+  const t = $('#restTime'), box = $('#restBox'), cap = $('#restCap');
+  if (t) t.textContent = d.text;
+  if (cap) cap.textContent = d.over ? 'Repos terminé' : 'Repos';
+  if (box) box.classList.toggle('over', d.over);
+}
+function startRest() {
+  stopRest();
+  const sec = db.settings.rest;
+  if (!(sec > 0)) return;
+  S.restEnd = Date.now() + sec * 1000; restBeeped = false;
+  restTimer = setInterval(restTick, 500);
+}
+function stopRest() {
+  clearInterval(restTimer); restTimer = null; S.restEnd = null; restBeeped = false;
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') restTick(); });
+const restHtml = () => {
+  if (!S.restEnd || S.recording) return '';
+  const d = restDisplay(S.restEnd - Date.now());
+  return `<section id="restBox" class="rest${d.over ? ' over' : ''}" role="timer" aria-label="Minuteur de repos"><div><p class="cap" id="restCap">${d.over ? 'Repos terminé' : 'Repos'}</p><p class="stat" id="restTime">${d.text}</p></div><button class="btn alt sm" data-act="restskip">Passer</button></section>`;
+};
 
 // ---------- corrections de reps (rep fantôme, rep ratée) ----------
 function persistEdit() {
@@ -128,6 +161,7 @@ async function disconnect() { if (sensor) await sensor.disconnect(); connected =
 
 // ---------- série ----------
 function startSet() {
+  stopRest();
   S.recording = true; S.reps = []; S.selected = null; S.setId = null;
   S.raw = S.pre; S.pre = []; S.rawMeta = { exercise: S.exercise, load: S.load, t: Date.now() };
   renderSeance();
@@ -144,6 +178,7 @@ function endSet() {
     db.last = { exercise: S.exercise, load: S.load };
     store.save(db);
     toast(`Série de ${prof().name} enregistrée : ${S.reps.length} reps à ${kg(S.load)} kg`);
+    startRest();
   } else toast('Aucune rep détectée, série non enregistrée.');
   S.selected = S.reps.length ? S.reps.length - 1 : null;
   renderSeance();
@@ -156,6 +191,7 @@ function simulate() {
   const base = Math.min(1.1, Math.max(0.28, 1.3 - S.load * 0.0095));
   const reps = [0, 1, 2, 3, 4].map(i => { const mcv = base * (1 - 0.05 * i * (S.load / 100 + 0.4)); return { mcv, dur: 0.55 / mcv }; });
   const sim = generateSet({ reps, tiltDeg: 6, swingDeg: 2, seed: Date.now() % 10000 });
+  stopRest();
   S.recording = true; S.reps = []; S.selected = null; S.setId = null; S.raw = []; S.pre = [];
   S.rawMeta = { exercise: S.exercise, load: S.load, t: Date.now() };
   keepAwake(true); renderSeance();
@@ -225,6 +261,7 @@ function renderSeance() {
   const setup = S.recording ? '' : `
     <section class="opts" aria-label="Retour pendant la série">
       <div class="optrow"><span class="cap" id="lossLbl">Alerte d'arrêt</span><div class="seg" role="group" aria-labelledby="lossLbl">${seg('loss', [[0, 'Off'], [0.1, '10 %'], [0.2, '20 %'], [0.3, '30 %']], v => cfg.lossStop === v)}</div></div>
+      <div class="optrow"><span class="cap" id="restLbl">Repos</span><div class="seg" role="group" aria-labelledby="restLbl">${seg('rest', [[0, 'Off'], [120, '2 min'], [180, '3 min'], [300, '5 min']], v => cfg.rest === v)}</div></div>
       <div class="optrow"><span class="cap" id="fbLbl">Retour</span><div class="seg" role="group" aria-labelledby="fbLbl">${seg('tog', [['sound', 'Son']], v => cfg[v])}</div></div>
     </section>
     <div class="ex" role="group" aria-label="Mouvement">${Object.entries(EXERCISES).map(([k, n]) => `<button data-act="ex" data-v="${k}" class="${k === S.exercise ? 'on' : ''}" aria-pressed="${k === S.exercise}">${n}</button>`).join('')}</div>
@@ -241,6 +278,7 @@ function renderSeance() {
     + (stop ? `<p class="stopbar" role="alert">Perte de ${loss} % : arrête la série</p>` : '');
   $('#app').innerHTML = `
     <header class="top"><span id="chip" class="chip"></span>${S.recording ? `<span class="ctx">${esc(prof().name)} · ${EXERCISES[S.exercise]} · ${kg(S.load)} kg</span>` : whoBar()}</header>
+    ${restHtml()}
     ${setup}
     <section class="reading" aria-live="polite">
       <p class="cap">${last ? `Rep ${lastNo} · vitesse moyenne` : 'Vitesse moyenne'}</p>
@@ -432,7 +470,9 @@ document.addEventListener('click', e => {
   const el = e.target.closest('[data-act]'); if (!el) return;
   const act = el.dataset.act, v = el.dataset.v;
   unlockAudio();                                      // Chrome n'autorise le son qu'après un toucher
-  if (act === 'loss') { db.settings.lossStop = parseFloat(v); store.save(db); renderSeance(); }
+  if (act === 'rest') { db.settings.rest = parseInt(v, 10); store.save(db); renderSeance(); }
+  else if (act === 'restskip') { stopRest(); renderSeance(); }
+  else if (act === 'loss') { db.settings.lossStop = parseFloat(v); store.save(db); renderSeance(); }
   else if (act === 'tog') { db.settings[v] = !db.settings[v]; store.save(db); renderSeance(); }
   else if (act === 'fail') toggleFailed(S.selected);
   else if (act === 'delrep') deleteRep(S.selected);

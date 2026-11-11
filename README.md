@@ -23,3 +23,10 @@ vitesse par rep, profil charge-vitesse et 1RM estimé du jour, historique.
 - Historique (`js/history.js`) : par exercice et par profil, courbe de progression (1RM estimé du jour, ou meilleure vitesse à une charge choisie), séances du jour avec volume, détail d'une série (reps, barres, courbe de rep, correction), déplacement d'une série vers un autre profil
 - Un profil ne se supprime que s'il n'a plus de série ; l'onglet « 1RM » (ex-« Profil ») montre le profil charge-vitesse du jour
 - Tests : `node tests/history.test.mjs` ; scénario navigateur : `tests/e2e-profiles.html`
+
+## Minuteur de repos
+
+- Réglage « Repos » (Off par défaut, 2 / 3 / 5 min) avant la série ; le compte à rebours démarre quand une série est enregistrée
+- À zéro : deux bips aigus et une vibration (une seule fois), puis le dépassement s'affiche (+0:12) sur fond plein
+- Il disparaît au démarrage de la série suivante, ou avec « Passer »
+- Tests : `restDisplay` dans `tests/feedback.test.mjs`, scénario navigateur `tests/e2e-rest.html`

@@ -29,3 +29,8 @@ export function beepRep(zone) {
 export function beepStop() {
   try { [0, 0.2, 0.4].forEach(s => tone(260, s, 0.15, 0.5)); } catch (_) { /* ignore */ }
 }
+
+/** Repos terminé : deux bips aigus, distincts d'un bip de rep (un seul) et de l'alerte d'arrêt (trois graves). */
+export function beepReady() {
+  try { [0, 0.25].forEach(s => tone(988, s, 0.18, 0.4)); } catch (_) { /* ignore */ }
+}

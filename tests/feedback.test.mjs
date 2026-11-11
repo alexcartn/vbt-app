@@ -1,4 +1,4 @@
-import { activeReps, setStats, shouldStop, rawCsv } from '../js/feedback.js';
+import { activeReps, setStats, shouldStop, rawCsv, restDisplay } from '../js/feedback.js';
 import { bestPerLoad } from '../js/profile.js';
 
 let fails = 0;
@@ -28,6 +28,13 @@ check('sous le seuil', shouldStop([R(0.8), R(0.68)], 0.2) === false);   // 15 %
 check('au seuil exact', shouldStop([R(0.8), R(0.64)], 0.2) === true);   // 20 %
 check('au-dessus du seuil', shouldStop([R(0.8), R(0.5)], 0.2) === true);
 check('une seule rep ne déclenche jamais', shouldStop([R(0.8)], 0.1) === false);
+
+// minuteur de repos : compte à rebours puis dépassement
+check('repos : 2:47 restantes', JSON.stringify(restDisplay(167000)) === JSON.stringify({ over: false, text: '2:47' }), JSON.stringify(restDisplay(167000)));
+check('repos : arrondi à la seconde supérieure', restDisplay(500).text === '0:01' && restDisplay(60000).text === '1:00');
+check('repos : à zéro = prêt', JSON.stringify(restDisplay(0)) === JSON.stringify({ over: true, text: '+0:00' }));
+check('repos : dépassement +0:12', JSON.stringify(restDisplay(-12000)) === JSON.stringify({ over: true, text: '+0:12' }), JSON.stringify(restDisplay(-12000)));
+check('repos : dépassement au-delà de 1 min', restDisplay(-75000).text === '+1:15');
 
 // profil : une rep ratée ne doit pas fixer la meilleure vitesse d'une charge
 const pts = bestPerLoad([{ load: 100, reps: [R(0.60), R(1.40, true)] }]);
