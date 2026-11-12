@@ -14,7 +14,7 @@
   --stop: oklch(58% 0.2 27);      --stop-ink: oklch(50% 0.19 27);
 
   --space-xs: 4px; --space-sm: 8px; --space-md: 16px; --space-lg: 24px; --space-xl: 32px; --space-2xl: 48px;
-  --t-label: 0.75rem; --t-body: 0.9375rem; --t-lead: 1.1875rem; --t-title: 1.5rem;
+  --t-label: 0.8125rem; --t-body: 0.9375rem; --t-lead: 1.1875rem; --t-title: 1.5rem;
   --display: "Big Shoulders Display", "Arial Narrow", sans-serif;
   --text: "Hanken Grotesk", system-ui, sans-serif;
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
@@ -92,8 +92,7 @@ button:disabled { opacity: 0.4; }
 
 /* actions */
 .actions { display: flex; flex-direction: column; gap: var(--space-sm); }
-.actions.sticky { position: sticky; bottom: calc(60px + env(safe-area-inset-bottom)); background: var(--paper); padding-block: var(--space-sm); box-shadow: 0 -12px 12px -4px var(--paper); }
-.btn { min-height: 56px; padding: 0 var(--space-lg); border: 1.5px solid var(--ink); border-radius: 4px; background: var(--ink); color: var(--paper); font-weight: 700; font-size: var(--t-lead); text-transform: uppercase; letter-spacing: 0.06em; }
+.btn { min-height: 56px; padding: 0 var(--space-lg); border: 1.5px solid var(--ink); border-radius: 4px; background: var(--ink); color: var(--paper); font-weight: 700; font-size: var(--t-lead); text-transform: none; letter-spacing: 0.01em; }
 .btn.alt { background: transparent; color: var(--ink); }
 .btn.sm { min-height: 48px; font-size: var(--t-body); padding: 0 var(--space-sm); }
 .btn:active { transform: translateY(1px); }
@@ -102,14 +101,15 @@ button:disabled { opacity: 0.4; }
 /* profil, historique */
 .chart { width: 100%; height: auto; display: block; }
 .note { color: var(--ink-2); max-width: 40ch; }
-.note strong { color: var(--stop-ink); }
+.note strong { color: var(--ink); }
+.note.alert strong { color: var(--stop-ink); }
 table { width: 100%; border-collapse: collapse; }
 td { padding: 10px 0; border-bottom: 1px solid var(--rule); }
 td:last-child { text-align: right; font: 800 1.5rem/1 var(--display); letter-spacing: 0.02em; }
 .block { border-top: 1.5px solid var(--ink); padding-top: var(--space-sm); display: flex; flex-direction: column; }
 .setting { display: flex; align-items: center; justify-content: space-between; gap: var(--space-md); }
 .setting input { width: 5.5rem; border: 1.5px solid var(--ink); border-radius: 4px; background: transparent; color: var(--ink); font: 800 1.75rem/1 var(--display); text-align: center; padding: 8px; }
-.hint { font-size: var(--t-label); color: var(--ink-3); max-width: 44ch; }
+.hint { font-size: var(--t-label); color: var(--ink-2); max-width: 44ch; }
 .day { font: 800 var(--t-lead)/1 var(--display); text-transform: uppercase; letter-spacing: 0.05em; margin-top: var(--space-md); }
 .hrow { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--rule); gap: var(--space-md); }
 .hrow b { font-weight: 700; } .hrow span { display: block; font-size: 0.8125rem; color: var(--ink-2); }
@@ -152,7 +152,7 @@ td:last-child { text-align: right; font: 800 1.5rem/1 var(--display); letter-spa
 #nav { position: fixed; inset: auto 0 0 0; display: flex; background: var(--paper); border-top: 1px solid var(--rule); padding-bottom: env(safe-area-inset-bottom); }
 #nav button { flex: 1; min-height: 60px; border: 0; background: transparent; color: var(--ink-3); font-weight: 600; font-size: var(--t-body); text-transform: uppercase; letter-spacing: 0.06em; border-top: 3px solid transparent; }
 #nav button.on { color: var(--ink); border-top-color: var(--ink); font-weight: 700; }
-#toast { position: fixed; left: var(--space-md); right: var(--space-md); bottom: calc(76px + env(safe-area-inset-bottom)); background: var(--ink); color: var(--paper); padding: 14px var(--space-md); border-radius: 4px; opacity: 0; pointer-events: none; transition: opacity 200ms var(--ease); font-weight: 600; }
+#toast { position: fixed; left: var(--space-md); right: var(--space-md); top: calc(12px + env(safe-area-inset-top)); z-index: 6; background: var(--ink); color: var(--paper); padding: 14px var(--space-md); border-radius: 4px; opacity: 0; pointer-events: none; transition: opacity 200ms var(--ease); font-weight: 600; }
 #toast.show { opacity: 1; }
 
 @media (prefers-reduced-motion: reduce) { .bar.fresh { animation: none; } #toast { transition: none; } }
@@ -189,6 +189,16 @@ body.welcome #nav { display: none; }
 .field { display: flex; flex-direction: column; gap: var(--space-xs); }
 
 /* avertissements d'environnement, lien de retour */
-.notice { border-inline-start: 4px solid var(--mid); background: oklch(95% 0.04 85); padding: var(--space-md); display: flex; flex-direction: column; gap: var(--space-sm); font-size: var(--t-body); line-height: 1.4; }
+.notice { border: 1.5px solid var(--mid); background: oklch(95% 0.04 85); border-radius: 4px; padding: var(--space-md); display: flex; flex-direction: column; gap: var(--space-sm); font-size: var(--t-body); line-height: 1.4; }
 .link { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; font-weight: 600; }
 .connect.solo { grid-template-columns: 1fr; }
+
+/* dock : Démarrer / Terminer toujours au même endroit, sous le pouce */
+.dock { position: fixed; left: 0; right: 0; bottom: calc(60px + env(safe-area-inset-bottom)); z-index: 4; padding: var(--space-sm) var(--space-md); background: var(--paper); border-top: 1px solid var(--rule); }
+.dock .btn { display: block; width: 100%; max-width: 488px; margin: 0 auto; }
+body.has-dock #app { padding-bottom: calc(160px + env(safe-area-inset-bottom)); }
+body.has-dock #update { bottom: calc(148px + env(safe-area-inset-bottom)); }
+.btn.ghost { background: transparent; border-color: transparent; color: var(--ink); text-decoration: underline; text-underline-offset: 3px; min-height: 44px; }
+.empty .emptyh { font: 800 var(--t-lead)/1.1 var(--display); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: var(--space-xs); color: var(--ink); }
+.empty p { color: var(--ink-2); }
+label .sub { display: block; text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--ink-3); font-size: var(--t-label); }
