@@ -175,7 +175,8 @@ details.opts .optlist { display: flex; flex-direction: column; gap: var(--space-
 .introbtn { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-sm); }
 .guide { border-top: 1.5px solid var(--ink); padding-top: var(--space-sm); display: flex; flex-direction: column; gap: var(--space-sm); }
 .guide ol, .guide ul { margin: 0; padding-inline-start: 1.25rem; display: flex; flex-direction: column; gap: var(--space-sm); font-size: var(--t-body); line-height: 1.45; }
-#nav button { font-size: 0.8rem; }
+#nav button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 0.7rem; letter-spacing: 0.05em; padding: 6px 0; }
+#nav .ic { display: block; }
 
 /* bandeau de mise à jour, au-dessus de la navigation */
 #update { position: fixed; left: var(--space-md); right: var(--space-md); bottom: calc(76px + env(safe-area-inset-bottom)); z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: var(--space-md); background: var(--ink); color: var(--paper); padding: var(--space-sm) var(--space-sm) var(--space-sm) var(--space-md); border-radius: 4px; font-weight: 600; }
