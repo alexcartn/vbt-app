@@ -166,3 +166,13 @@ details > summary::after { content: '+'; font-weight: 700; font-size: var(--t-le
 details[open] > summary::after { content: '−'; }
 details.opts > summary .sum { margin-inline-start: auto; color: var(--ink-2); font-size: var(--t-body); text-align: right; }
 details.opts .optlist { display: flex; flex-direction: column; gap: var(--space-sm); padding-bottom: var(--space-md); }
+
+/* connexion : téléphone en valeur (large), MetaMotion discret */
+.connect { display: grid; grid-template-columns: 2fr 1fr; gap: var(--space-sm); }
+.btn.sm { min-height: 48px; font-size: var(--t-body); padding: 0 var(--space-sm); }
+/* bandeau première visite et guide */
+.intro { border: 1.5px solid var(--ink); border-radius: 4px; padding: var(--space-md); display: flex; flex-direction: column; gap: var(--space-sm); }
+.introbtn { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-sm); }
+.guide { border-top: 1.5px solid var(--ink); padding-top: var(--space-sm); display: flex; flex-direction: column; gap: var(--space-sm); }
+.guide ol, .guide ul { margin: 0; padding-inline-start: 1.25rem; display: flex; flex-direction: column; gap: var(--space-sm); font-size: var(--t-body); line-height: 1.45; }
+#nav button { font-size: 0.8rem; }

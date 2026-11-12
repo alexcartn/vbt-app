@@ -312,7 +312,7 @@ function renderSeance() {
     + (stop ? `<p class="stopbar" role="alert">Perte de ${loss} % : arrête la série</p>` : '');
   const actions = `
     <div class="actions${S.recording ? ' sticky' : ''}">
-      ${!connected && !simTimer ? `<button class="btn" data-act="connect">Connecter le capteur</button><button class="btn alt" data-act="connect-phone">Utiliser le téléphone</button>` : ''}
+      ${!connected && !simTimer ? `<div class="connect"><button class="btn sm" data-act="connect-phone">Utiliser le téléphone</button><button class="btn sm alt" data-act="connect">MetaMotion</button></div>` : ''}
       ${(connected || simTimer) && !S.recording ? `<button class="btn" data-act="start">Démarrer la série</button>` : ''}
       ${S.recording ? `<button class="btn" data-act="end">Terminer la série</button>` : ''}
       ${!S.recording ? `<details class="more" id="moreBox"${S.moreOpen ? ' open' : ''}><summary class="cap">Plus</summary>
@@ -325,6 +325,7 @@ function renderSeance() {
   $('#app').innerHTML = `
     <header class="top"><span id="chip" class="chip"></span>${S.recording ? `<span class="ctx">${esc(prof().name)} · ${EXERCISES[S.exercise]} · ${kg(S.load)} kg</span>` : whoBar()}</header>
     ${restHtml()}
+    ${S.recording || cfg.guideSeen ? '' : `<section class="intro"><p><b>Première fois ?</b> Le guide explique en 1 minute comment fixer le téléphone, lire les résultats et régler l'app.</p><div class="introbtn"><button class="btn sm" data-act="guide">Ouvrir le guide</button><button class="btn sm alt" data-act="guidehide">Plus tard</button></div></section>`}
     ${setup}
     ${S.recording ? '' : actions}
     <section class="reading" aria-live="polite">
@@ -336,6 +337,54 @@ function renderSeance() {
     ${detailHtml()}
     ${S.recording ? actions : ''}`;
   renderStatus();
+}
+
+
+// ---------- guide ----------
+function renderGuide() {
+  const sec = (t, body) => `<section class="guide"><h2 class="cap">${t}</h2>${body}</section>`;
+  $('#app').innerHTML = `
+    <header class="top"><h1>Guide</h1></header>
+    <p class="hint">Une minute de lecture. Tu peux y revenir à tout moment avec l'onglet Guide.</p>
+    ${sec('Démarrer en 5 gestes', `<ol>
+      <li>Choisis le mouvement et la charge sur la barre.</li>
+      <li>Touche « Utiliser le téléphone » (autorise les capteurs de mouvement si Chrome le demande).</li>
+      <li>Fixe le téléphone sur la barre, puis garde-le immobile 1 s : l'app se calibre toute seule, dans n'importe quelle position.</li>
+      <li>Touche « Démarrer la série », puis fais tes reps. Chaque rep s'affiche et fait un bip dès qu'elle est terminée.</li>
+      <li>Touche « Terminer la série » : elle est enregistrée dans l'historique.</li>
+    </ol>`)}
+    ${sec('Fixer le téléphone sur la barre', `<ul>
+      <li>Sécurité d'abord : support rigide, serré, qui ne peut pas glisser ni tomber. Au développé couché, ne le place jamais au-dessus du visage sans attache solide.</li>
+      <li>Fixe-le sur la partie fixe de la barre. Le manchon où l'on met les disques tourne souvent librement : évite-le.</li>
+      <li>L'orientation n'a pas d'importance, mais il ne doit pas bouger par rapport à la barre pendant la série.</li>
+      <li>Garde l'écran allumé (l'app le demande) et désactive l'économiseur de batterie.</li>
+      <li>Le téléphone n'est plus visible sur la barre : active le son, ou pose un second appareil devant toi.</li>
+    </ul>`)}
+    ${sec('Lire les résultats', `<ul>
+      <li>La grande valeur est la vitesse moyenne de la montée de la dernière rep, en m/s.</li>
+      <li>Les barres comparent chaque rep à ta meilleure de la série : vert jusqu'à 10 % de perte, orange jusqu'à 20 %, rouge au-delà. Ce repère vient de l'app, ce n'est pas une règle scientifique.</li>
+      <li>Touche une barre pour voir le détail. « Rep ratée » l'exclut des calculs, « Supprimer » l'efface.</li>
+    </ul>`)}
+    ${sec('Les réglages', `<ul>
+      <li>Alerte d'arrêt : trois bips graves quand la vitesse a perdu 10, 20 ou 30 % par rapport à ta meilleure rep. 10 à 20 % suffisent souvent pour travailler la force.</li>
+      <li>Repos : un compte à rebours démarre à la fin de la série, avec deux bips à zéro.</li>
+      <li>Vitesse cible : une ligne sur les barres et l'écart de chaque rep.</li>
+      <li>Son : bip de rep (aigu en zone verte, grave en zone rouge) et alertes.</li>
+      <li>Test de mesure, Amplitude : n'est pas validé, à réserver aux essais.</li>
+    </ul>`)}
+    ${sec('1RM et vitesse minimale', `<ul>
+      <li>Il faut au moins 2 charges différentes, idéalement 3 ou plus de légère à lourde, pour tracer ton profil charge-vitesse.</li>
+      <li>Le 1RM estimé sert à doser la charge du jour. Ce n'est pas un poids à tenter, surtout au deadlift.</li>
+      <li>La vitesse minimale par défaut est une moyenne. Après une rep réussie à l'échec, touche « Définir comme vitesse minimale » pour utiliser la tienne.</li>
+    </ul>`)}
+    ${sec('Pour des mesures fiables', `<ul>
+      <li>Reste immobile pendant le calibrage, et attends que l'indicateur en haut passe au vert.</li>
+      <li>Marque une pause d'environ une seconde entre les reps : c'est ainsi que l'app sépare chaque rep.</li>
+      <li>Monte aussi vite que possible, avec la même technique d'une série à l'autre.</li>
+      <li>Les valeurs viennent d'un capteur de téléphone, non validé sur barre réelle : compare les tendances, pas un chiffre isolé.</li>
+      <li>Chrome sur Android donne environ 60 mesures par seconde : très bien pour la vitesse moyenne, moins pour le pic.</li>
+    </ul>`)}
+    <button class="btn" data-act="guidehide">${db.settings.guideSeen ? 'Retour à la séance' : "Compris, c'est parti"}</button>`;
 }
 
 // ---------- profils ----------
@@ -508,7 +557,7 @@ function histoPersist() {
 
 function render() {
   document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('on', b.dataset.v === S.tab));
-  ({ seance: renderSeance, profil: renderProfil, histo: renderHisto })[S.tab]();
+  ({ seance: renderSeance, profil: renderProfil, histo: renderHisto, guide: renderGuide })[S.tab]();
 }
 
 let toastT;
@@ -520,6 +569,8 @@ document.addEventListener('click', e => {
   const act = el.dataset.act, v = el.dataset.v;
   unlockAudio();                                      // Chrome n'autorise le son qu'après un toucher
   if (act === 'tgt') { const d = parseFloat(v), t = S.target ? Math.round((S.target + d) * 100) / 100 : (d > 0 ? 0.6 : null); S.target = t == null || t < 0.1 ? null : Math.min(2, t); db.last.target = S.target; store.save(db); renderSeance(); }
+  else if (act === 'guide') { S.tab = 'guide'; render(); window.scrollTo(0, 0); }
+  else if (act === 'guidehide') { db.settings.guideSeen = true; store.save(db); S.tab = 'seance'; render(); }
   else if (act === 'manual') { addManualSet(); renderSeance(); }
   else if (act === 'setmvt') { setMvtFromRep(S.reps[S.selected], db.activeProfile, S.exercise); renderSeance(); }
   else if (act === 'hsetmvt') { const hs = hset(); if (hs) setMvtFromRep(hs.reps[S.h.sel], hs.profileId, hs.exercise); renderHisto(); }
