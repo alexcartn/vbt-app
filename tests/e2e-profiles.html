@@ -1,6 +1,6 @@
 <!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="../style.css"></head><body>
-<div id="app"></div><nav id="nav"><button data-v="seance" class="on">Séance</button><button data-v="profil">1RM</button><button data-v="histo">Historique</button></nav><div id="toast"></div>
+<div id="app"></div><nav id="nav"><button data-v="seance" class="on">Séance</button><button data-v="profil">1RM</button><button data-v="histo">Historique</button><button data-v="stats">Stats</button></nav><div id="toast"></div>
 <pre id="result">en cours</pre>
 <script>
 const errors = []; window.addEventListener('error', e => errors.push(e.message));
@@ -45,10 +45,14 @@ r.paulineHisto = { sessions: $$('.day').length, sets: $$('.hset').length, hasCha
 
 // historique d'Alexandre : courbe de progression sur 3 séances
 change('#profSel', db().profiles.find(p => p.name === 'Alexandre').id); await wait(50);
-r.alexHisto = { sessions: $$('.day').length, sets: $$('.hset').length, line: !!$('svg .line'), dots: $$('svg .dot').length, stat: $('.stat')?.textContent, delta: $('.delta')?.textContent };
-click('[data-act=hmetric][data-v=vel]'); await wait(50);
-r.velChart = { loadOptions: $$('#hLoad option').map(o => o.textContent), dots: $$('svg .dot').length, stat: $('.stat')?.textContent };
-click('[data-act=hmetric][data-v=e1rm]'); await wait(50);
+r.alexHisto = { sessions: $$('.day').length, sets: $$('.hset').length, noChartHere: !$('svg .line') };
+// onglet Stats : courbe de progression
+click('#nav button[data-v=stats]'); await wait(50);
+r.alexStats = { line: !!$('svg .line'), dots: $$('svg .dot').length, stat: $('.stat')?.textContent, delta: $('.delta')?.textContent, rmRows: $$('table.rm')[0]?.querySelectorAll('tbody tr').length };
+click('[data-act=smetric][data-v=vel]'); await wait(50);
+r.velChart = { loadOptions: $$('#sLoad option').map(o => o.textContent), dots: $$('svg .dot').length, stat: $('.stat')?.textContent };
+click('[data-act=smetric][data-v=e1rm]'); await wait(50);
+click('#nav button[data-v=histo]'); await wait(50);
 
 // détail d'une série, puis déplacement vers Pauline
 click('.hset'); await wait(50);

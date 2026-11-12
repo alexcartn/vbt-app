@@ -1,7 +1,10 @@
 // Stockage local (localStorage) : séries enregistrées, profils, réglages.
 import { MVT_DEFAULT } from './profile.js';
+import { demoData } from './demo.js';
 
-const KEY = 'vbt.v1';
+// ?demo=1 : démo avec des données d'exemple, dans un stockage à part (le vrai historique n'est jamais touché)
+export const isDemo = typeof location !== 'undefined' && new URLSearchParams(location.search).has('demo');
+const KEY = isDemo ? 'vbt.demo' : 'vbt.v1';
 export const DEFAULT_PROFILE_NAME = 'Alexandre';
 
 // lossStop : perte de vitesse (0 à 1) qui déclenche l'alerte d'arrêt, 0 = désactivée
@@ -30,6 +33,7 @@ export function normalize(d) {
 }
 
 export function load() {
+  if (isDemo) return normalize(demoData());          // données d'exemple recalculées à chaque ouverture, dates relatives à aujourd'hui
   try {
     const d = JSON.parse(localStorage.getItem(KEY));
     if (d && Array.isArray(d.sets)) return normalize(d);
