@@ -222,3 +222,8 @@ table.rm td { padding: 10px 0; border-top: 1px solid var(--rule); }
 table.rm td, table.rm td:last-child { font: 400 var(--t-body)/1.3 var(--text); letter-spacing: 0; border-bottom: 0; }
 table.rm td:first-child { font-weight: 700; }
 table.rm .linkbtn { font: 700 var(--t-body)/1.3 var(--text); }
+
+/* sélecteur de mouvement : icône au-dessus du libellé */
+.ex button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 10px 0 9px; }
+.ex.four button { font-size: 0.75rem; }
+.exic { display: block; }

@@ -1,6 +1,7 @@
 import { Tracker } from './signal.js';
 import { Sensor, bleSupported } from './ble.js';
 import { PhoneSensor, phoneSupported } from './phone.js';
+import { exIcon } from './icons.js';
 import { generateSet } from './sim.js';
 import * as store from './store.js';
 import { EXERCISES, MVT_DEFAULT, bestPerLoad, fitProfile, loadForVelocity, mvtNote } from './profile.js';
@@ -296,7 +297,7 @@ function renderSeance() {
   const seg = (act, items, isOn) => items.map(([v, l]) => `<button data-act="${act}" data-v="${v}" class="${isOn(v) ? 'on' : ''}" aria-pressed="${isOn(v)}">${l}</button>`).join('');
   const optsSum = [cfg.lossStop && `Alerte ${Math.round(cfg.lossStop * 100)} %`, cfg.rest && `Repos ${cfg.rest / 60} min`, S.target && `Cible ${fmt(S.target)}`, cfg.sound && 'Son'].filter(Boolean).join(' · ') || 'Aucun';
   const setup = S.recording ? '' : `
-    <div class="ex" role="group" aria-label="Mouvement">${Object.entries(EXERCISES).map(([k, n]) => `<button data-act="ex" data-v="${k}" class="${k === S.exercise ? 'on' : ''}" aria-pressed="${k === S.exercise}">${n}</button>`).join('')}</div>
+    <div class="ex" role="group" aria-label="Mouvement">${Object.entries(EXERCISES).map(([k, n]) => `<button data-act="ex" data-v="${k}" class="${k === S.exercise ? 'on' : ''}" aria-pressed="${k === S.exercise}">${exIcon(k)}<span>${n}</span></button>`).join('')}</div>
     <div class="stepper">
       <button data-act="load" data-v="-10" aria-label="Moins 10 kilos">−10</button>
       <button data-act="load" data-v="-2.5" aria-label="Moins 2,5 kilos">−2,5</button>
@@ -541,7 +542,7 @@ function renderProfil() {
       (sug.length ? `<section class="block"><h2 class="cap">Charge pour une vitesse cible</h2><table>${sug.map(x => `<tr><td>${fmt(x.v)} m/s</td><td>${kg(Math.round(x.l / 2.5) * 2.5)} kg</td></tr>`).join('')}</table></section>` : '');
   }
   $('#app').innerHTML = `<header class="top"><h1>1RM du jour</h1>${whoBar()}</header>
-    <div class="ex" role="group" aria-label="Mouvement">${Object.entries(EXERCISES).map(([k, n]) => `<button data-act="ex" data-v="${k}" class="${k === ex ? 'on' : ''}" aria-pressed="${k === ex}">${n}</button>`).join('')}</div>
+    <div class="ex" role="group" aria-label="Mouvement">${Object.entries(EXERCISES).map(([k, n]) => `<button data-act="ex" data-v="${k}" class="${k === ex ? 'on' : ''}" aria-pressed="${k === ex}">${exIcon(k)}<span>${n}</span></button>`).join('')}</div>
     ${body}
     ${mvtNote(ex, prof().mvtCustom[ex]) ? `<p class="note"><strong>Prudence.</strong> ${mvtNote(ex, prof().mvtCustom[ex])}</p>` : ''}
     <section class="block"><div class="setting"><label class="cap" for="mvtIn">Vitesse minimale<span class="sub">${prof().mvtCustom[ex] ? 'la tienne' : 'valeur par défaut'}</span></label><input id="mvtIn" type="number" step="0.01" inputmode="decimal" value="${mvt}"></div>
@@ -591,7 +592,7 @@ function renderHistoList() {
     return `<div class="hrow"><div><b>${esc(q.name)}</b><span>${n} série${n > 1 ? 's' : ''}</span></div><div class="prow"><button class="btn alt sm" data-act="pren" data-id="${q.id}">Renommer</button><button class="btn alt sm" data-act="pdel" data-id="${q.id}"${locked ? ' disabled' : ''}>Supprimer</button></div></div>`;
   }).join('')}<p class="hint" style="margin-top:8px">Un profil ne se supprime que s'il n'a plus de série : ouvre une série et change son profil pour la déplacer.</p></section>`;
   $('#app').innerHTML = `<header class="top"><h1>Historique</h1>${whoBar()}</header>
-    <div class="ex four" role="group" aria-label="Mouvement">${[['all', 'Tout'], ...Object.entries(EXERCISES)].map(([k, n]) => `<button data-act="hex" data-v="${k}" class="${k === ex ? 'on' : ''}" aria-pressed="${k === ex}">${n}</button>`).join('')}</div>
+    <div class="ex four" role="group" aria-label="Mouvement">${[['all', 'Tout'], ...Object.entries(EXERCISES)].map(([k, n]) => `<button data-act="hex" data-v="${k}" class="${k === ex ? 'on' : ''}" aria-pressed="${k === ex}">${exIcon(k)}<span>${n}</span></button>`).join('')}</div>
     ${list}${profs}` +
     (db.sets.length ? `<button class="btn alt" data-act="exporthist">Exporter l'historique (JSON)</button>` : '');
 }
@@ -642,7 +643,7 @@ function renderStats() {
     body += `<section class="block"><h2 class="cap">Au total</h2><p class="hint">${sess.length} séance${sess.length > 1 ? 's' : ''} · ${totReps} reps · volume ${Math.round(totVol).toLocaleString('fr-FR')} kg</p></section>`;
   }
   $('#app').innerHTML = `<header class="top"><h1>Stats</h1>${whoBar()}</header>
-    <div class="ex" role="group" aria-label="Mouvement">${Object.entries(EXERCISES).map(([k, n]) => `<button data-act="sex" data-v="${k}" class="${k === ex ? 'on' : ''}" aria-pressed="${k === ex}">${n}</button>`).join('')}</div>
+    <div class="ex" role="group" aria-label="Mouvement">${Object.entries(EXERCISES).map(([k, n]) => `<button data-act="sex" data-v="${k}" class="${k === ex ? 'on' : ''}" aria-pressed="${k === ex}">${exIcon(k)}<span>${n}</span></button>`).join('')}</div>
     ${body}`;
 }
 
