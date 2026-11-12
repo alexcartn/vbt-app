@@ -284,14 +284,8 @@ function renderSeance() {
   const loss = Math.round(st.loss * 100), stop = shouldStop(S.reps, cfg.lossStop);
   const lastNo = last ? S.reps.lastIndexOf(last) + 1 : 0;
   const seg = (act, items, isOn) => items.map(([v, l]) => `<button data-act="${act}" data-v="${v}" class="${isOn(v) ? 'on' : ''}" aria-pressed="${isOn(v)}">${l}</button>`).join('');
+  const optsSum = [cfg.lossStop && `Alerte ${Math.round(cfg.lossStop * 100)} %`, cfg.rest && `Repos ${cfg.rest / 60} min`, S.target && `Cible ${fmt(S.target)}`, cfg.sound && 'Son'].filter(Boolean).join(' · ') || 'Aucun';
   const setup = S.recording ? '' : `
-    <section class="opts" aria-label="Retour pendant la série">
-      <div class="optrow"><span class="cap" id="lossLbl">Alerte d'arrêt</span><div class="seg" role="group" aria-labelledby="lossLbl">${seg('loss', [[0, 'Off'], [0.1, '10 %'], [0.2, '20 %'], [0.3, '30 %']], v => cfg.lossStop === v)}</div></div>
-      <div class="optrow"><span class="cap" id="restLbl">Repos</span><div class="seg" role="group" aria-labelledby="restLbl">${seg('rest', [[0, 'Off'], [120, '2 min'], [180, '3 min'], [300, '5 min']], v => cfg.rest === v)}</div></div>
-      <div class="optrow"><span class="cap" id="tgtLbl">Vitesse cible</span><div class="tstep" role="group" aria-labelledby="tgtLbl"><button data-act="tgt" data-v="-0.05" aria-label="Cible moins 0,05">−</button><output>${S.target ? `${fmt(S.target)} m/s` : 'Off'}</output><button data-act="tgt" data-v="0.05" aria-label="Cible plus 0,05">+</button></div></div>
-      <div class="optrow"><span class="cap" id="fbLbl">Retour</span><div class="seg" role="group" aria-labelledby="fbLbl">${seg('tog', [['sound', 'Son']], v => cfg[v])}</div></div>
-      <div class="optrow"><span class="cap" id="romLbl">Test de mesure</span><div class="seg" role="group" aria-labelledby="romLbl">${seg('tog', [['showRom', 'Amplitude']], v => cfg[v])}</div></div>
-    </section>
     <div class="ex" role="group" aria-label="Mouvement">${Object.entries(EXERCISES).map(([k, n]) => `<button data-act="ex" data-v="${k}" class="${k === S.exercise ? 'on' : ''}" aria-pressed="${k === S.exercise}">${n}</button>`).join('')}</div>
     <div class="stepper">
       <button data-act="load" data-v="-10" aria-label="Moins 10 kilos">−10</button>
@@ -299,16 +293,39 @@ function renderSeance() {
       <label><input id="loadIn" type="number" inputmode="decimal" step="2.5" value="${S.load}" aria-label="Charge en kilos"><span>kg</span></label>
       <button data-act="load" data-v="2.5" aria-label="Plus 2,5 kilos">+2,5</button>
       <button data-act="load" data-v="10" aria-label="Plus 10 kilos">+10</button>
-    </div>`;
+    </div>
+    <details class="opts" id="optsBox"${S.optsOpen ? ' open' : ''}>
+      <summary><span class="cap">Réglages</span><span class="sum">${optsSum}</span></summary>
+      <div class="optlist">
+      <div class="optrow"><span class="cap" id="lossLbl">Alerte d'arrêt</span><div class="seg" role="group" aria-labelledby="lossLbl">${seg('loss', [[0, 'Off'], [0.1, '10 %'], [0.2, '20 %'], [0.3, '30 %']], v => cfg.lossStop === v)}</div></div>
+      <div class="optrow"><span class="cap" id="restLbl">Repos</span><div class="seg" role="group" aria-labelledby="restLbl">${seg('rest', [[0, 'Off'], [120, '2 min'], [180, '3 min'], [300, '5 min']], v => cfg.rest === v)}</div></div>
+      <div class="optrow"><span class="cap" id="tgtLbl">Vitesse cible</span><div class="tstep" role="group" aria-labelledby="tgtLbl"><button data-act="tgt" data-v="-0.05" aria-label="Cible moins 0,05">−</button><output>${S.target ? `${fmt(S.target)} m/s` : 'Off'}</output><button data-act="tgt" data-v="0.05" aria-label="Cible plus 0,05">+</button></div></div>
+      <div class="optrow"><span class="cap" id="fbLbl">Retour</span><div class="seg" role="group" aria-labelledby="fbLbl">${seg('tog', [['sound', 'Son']], v => cfg[v])}</div></div>
+      <div class="optrow"><span class="cap" id="romLbl">Test de mesure</span><div class="seg" role="group" aria-labelledby="romLbl">${seg('tog', [['showRom', 'Amplitude']], v => cfg[v])}</div></div>
+      </div>
+    </details>`;
   const dz = last ? `z-${zone(last.mcv, best)}` : "";
   const delta = (last ? (loss > 0 ? `<p class="delta ${dz}">−${loss} % par rapport à ta meilleure rep</p>` : `<p class="delta ${dz}">Meilleure rep de la série</p>`)
     : `<p class="delta quiet">${S.recording ? 'En attente de la première rep' : 'Règle la charge, puis démarre la série.'}</p>`)
     + (last && S.target ? (td => `<p class="delta">Cible ${fmt(S.target)} m/s : ${td.text} ${td.met ? '(atteinte)' : '(non atteinte)'}</p>`)(targetDelta(last.mcv, S.target)) : '')
     + (stop ? `<p class="stopbar" role="alert">Perte de ${loss} % : arrête la série</p>` : '');
+  const actions = `
+    <div class="actions${S.recording ? ' sticky' : ''}">
+      ${!connected && !simTimer ? `<button class="btn" data-act="connect">Connecter le capteur</button><button class="btn alt" data-act="connect-phone">Utiliser le téléphone</button>` : ''}
+      ${(connected || simTimer) && !S.recording ? `<button class="btn" data-act="start">Démarrer la série</button>` : ''}
+      ${S.recording ? `<button class="btn" data-act="end">Terminer la série</button>` : ''}
+      ${!S.recording ? `<details class="more" id="moreBox"${S.moreOpen ? ' open' : ''}><summary class="cap">Plus</summary>
+        ${!connected && !simTimer ? `<button class="btn alt" data-act="sim">Simuler une série</button>` : ''}
+        <button class="btn alt" data-act="manual">Série sans capteur</button>
+        ${S.raw.length > 50 ? `<button class="btn alt" data-act="exportraw">Exporter les données brutes (CSV)</button>` : ''}
+        ${connected ? `<button class="btn alt" data-act="disconnect">Déconnecter</button>` : ''}
+      </details>` : ''}
+    </div>`;
   $('#app').innerHTML = `
     <header class="top"><span id="chip" class="chip"></span>${S.recording ? `<span class="ctx">${esc(prof().name)} · ${EXERCISES[S.exercise]} · ${kg(S.load)} kg</span>` : whoBar()}</header>
     ${restHtml()}
     ${setup}
+    ${S.recording ? '' : actions}
     <section class="reading" aria-live="polite">
       <p class="cap">${last ? `Rep ${lastNo} · vitesse moyenne` : 'Vitesse moyenne'}</p>
       <p class="num${last ? '' : ' none'}">${last ? fmt(last.mcv) : '0,00'}<span class="unit">m/s</span></p>
@@ -316,14 +333,7 @@ function renderSeance() {
     </section>
     <section class="reps"><h2 class="cap">Reps${S.reps.length ? ' · touche une barre pour le détail' : ''}</h2>${barsSvg()}</section>
     ${detailHtml()}
-    <div class="actions${S.recording ? ' sticky' : ''}">
-      ${!connected && !simTimer ? `<button class="btn" data-act="connect">Connecter le capteur</button><button class="btn alt" data-act="connect-phone">Utiliser le téléphone</button><button class="btn alt" data-act="sim">Simuler une série</button>` : ''}
-      ${(connected || simTimer) && !S.recording ? `<button class="btn" data-act="start">Démarrer la série</button>` : ''}
-      ${S.recording ? `<button class="btn" data-act="end">Terminer la série</button>` : ''}
-      ${!S.recording ? `<button class="btn alt" data-act="manual">Série sans capteur</button>` : ''}
-      ${!S.recording && S.raw.length > 50 ? `<button class="btn alt" data-act="exportraw">Exporter les données brutes (CSV)</button>` : ''}
-      ${connected && !S.recording ? `<button class="btn alt" data-act="disconnect">Déconnecter</button>` : ''}
-    </div>`;
+    ${S.recording ? actions : ''}`;
   renderStatus();
 }
 
@@ -540,6 +550,8 @@ document.addEventListener('click', e => {
   else if (act === 'pren') renameProfile(el.dataset.id);
   else if (act === 'pdel') deleteProfile(el.dataset.id);
 });
+document.addEventListener('toggle', e => { if (e.target.id === 'optsBox') S.optsOpen = e.target.open; else if (e.target.id === 'moreBox') S.moreOpen = e.target.open; }, true);
+
 document.addEventListener('change', e => {
   if (e.target.id === 'profSel') {
     if (e.target.value === '__new') createProfile();
