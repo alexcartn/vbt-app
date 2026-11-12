@@ -55,7 +55,7 @@ export class PhoneSensor {
       this.h.onAcc([sign * a.x / G, sign * a.y / G, sign * a.z / G]);
     };
     window.addEventListener('devicemotion', this.motion);
-    await new Promise((res, rej) => setTimeout(() => got ? res() : rej(new Error('Aucune donnée de mouvement reçue.')), 1500));
+    await new Promise((res, rej) => setTimeout(() => got ? res() : rej(new Error('Aucune donnée de mouvement reçue : cet appareil n\'a pas de capteurs, ou ils sont bloqués (navigateur intégré à une application : ouvre la page dans Chrome ou Safari).')), 1500));
   }
 
   _stop() {

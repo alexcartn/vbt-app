@@ -312,7 +312,7 @@ function renderSeance() {
     + (stop ? `<p class="stopbar" role="alert">Perte de ${loss} % : arrête la série</p>` : '');
   const actions = `
     <div class="actions${S.recording ? ' sticky' : ''}">
-      ${!connected && !simTimer ? `<div class="connect"><button class="btn sm" data-act="connect-phone">Utiliser le téléphone</button><button class="btn sm alt" data-act="connect">MetaMotion</button></div>` : ''}
+      ${!connected && !simTimer ? `<div class="connect${bleSupported() ? '' : ' solo'}"><button class="btn sm" data-act="connect-phone">Utiliser le téléphone</button>${bleSupported() ? '<button class="btn sm alt" data-act="connect">MetaMotion</button>' : ''}</div>` : ''}
       ${(connected || simTimer) && !S.recording ? `<button class="btn" data-act="start">Démarrer la série</button>` : ''}
       ${S.recording ? `<button class="btn" data-act="end">Terminer la série</button>` : ''}
       ${!S.recording ? `<details class="more" id="moreBox"${S.moreOpen ? ' open' : ''}><summary class="cap">Plus</summary>
@@ -325,6 +325,7 @@ function renderSeance() {
   $('#app').innerHTML = `
     <header class="top"><span id="chip" class="chip"></span>${S.recording ? `<span class="ctx">${esc(prof().name)} · ${EXERCISES[S.exercise]} · ${kg(S.load)} kg</span>` : whoBar()}</header>
     ${restHtml()}
+    ${S.recording ? '' : envNotice()}
     ${S.recording || cfg.guideSeen ? '' : `<section class="intro"><p><b>Première fois ?</b> Le guide explique en 1 minute comment fixer le téléphone, lire les résultats et régler l'app.</p><div class="introbtn"><button class="btn sm" data-act="guide">Ouvrir le guide</button><button class="btn sm alt" data-act="guidehide">Plus tard</button></div></section>`}
     ${setup}
     ${S.recording ? '' : actions}
@@ -339,6 +340,25 @@ function renderSeance() {
   renderStatus();
 }
 
+
+
+// ---------- environnement : navigateur intégré, iPhone, retours ----------
+const UA = navigator.userAgent;
+const isIOS = /iP(hone|ad|od)/.test(UA) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const inApp = /LinkedInApp|FBAN|FBAV|Instagram|Twitter|MicroMessenger|Snapchat|; wv\)/.test(UA) || (isIOS && !/Safari/.test(UA));   // navigateur intégré à une appli : capteurs souvent bloqués
+const ISSUES = 'https://github.com/alexcartn/vbt-app/issues/new';
+function feedbackUrl() {
+  const body = `Ce qui s'est passé :\n\n\nAttendu :\n\n\n---\nAppareil et navigateur : ${UA}\nCapteur : ${sensor && sensor.api ? sensor.api : (connected ? 'MetaMotion' : 'non connecté')}\nFréquence mesurée : ${S.hz ? Math.round(S.hz) + ' Hz' : 'inconnue'}\n`;
+  return `${ISSUES}?title=${encodeURIComponent('Retour : ')}&body=${encodeURIComponent(body)}`;
+}
+const feedbackLink = label => `<a class="link" href="${feedbackUrl()}" target="_blank" rel="noopener">${label}</a>`;
+function envNotice() {
+  if (inApp) return `<section class="notice" role="alert"><p><b>Ouvre cette page dans Chrome ou Safari.</b> Tu es dans le navigateur d'une application : les capteurs de mouvement y sont souvent bloqués et l'app ne pourra pas mesurer.</p><button class="btn sm alt" data-act="copylink">Copier le lien</button></section>`;
+  if (isIOS) return `<section class="notice"><p><b>iPhone : mode expérimental.</b> Cette version n'a pas encore été testée sur iPhone : les vitesses peuvent être fausses sans que l'app le détecte. Ne t'y fie pas avant d'avoir comparé avec ton ressenti. ${feedbackLink('Dis-nous ce que tu observes')}</p></section>`;
+  if (!phoneSupported()) return `<section class="notice"><p>Ce navigateur n'a pas accès aux capteurs de mouvement. Ouvre la page sur ton téléphone (Chrome sur Android), ou essaie l'app avec « Simuler une série » dans « Plus ».</p></section>`;
+  return '';
+}
+const DISCLAIMER = `<p class="hint">Outil expérimental et indicatif, non validé sur barre réelle. Il ne remplace ni un entraîneur ni un avis médical : ne l'utilise pas pour décider d'une charge maximale, et fixe le téléphone de façon sûre.</p>`;
 
 // ---------- guide ----------
 function renderGuide() {
@@ -389,6 +409,8 @@ function renderGuide() {
       <li>Les valeurs viennent d'un capteur de téléphone, non validé sur barre réelle : compare les tendances, pas un chiffre isolé.</li>
       <li>Chrome sur Android donne environ 60 mesures par seconde : très bien pour la vitesse moyenne, moins pour le pic.</li>
     </ul>`)}
+    ${sec('Un retour, un problème ?', `<p class="hint">Les retours se font par une « issue » sur GitHub (un compte GitHub est nécessaire). Le formulaire s'ouvre avec ton appareil, ton navigateur et la fréquence des capteurs déjà remplis, rien d'autre. ${feedbackLink('Écrire un retour')}</p>`)}
+    ${DISCLAIMER}
     <button class="btn" data-act="guidehide">${db.settings.guideSeen ? 'Retour à la séance' : "Compris, c'est parti"}</button>`;
 }
 
@@ -398,6 +420,7 @@ function renderWelcome() {
   $('#app').innerHTML = `
     <header class="top"><h1>VBT</h1></header>
     <p class="lead">Mesure la vitesse de ta barre avec le capteur de ton téléphone, pour doser ta charge et suivre ta progression.</p>
+    ${envNotice()}
     <section class="guide"><h2 class="cap">Tes données restent chez toi</h2><ul>
       <li>Il n'y a pas de compte et rien n'est envoyé sur internet.</li>
       <li>Tes séries sont enregistrées uniquement sur ce téléphone, dans le navigateur.</li>
@@ -407,7 +430,9 @@ function renderWelcome() {
     <section class="guide"><h2 class="cap">Pour commencer</h2>
       <label class="field"><span class="cap">Ton prénom ou un pseudo</span><input id="firstName" class="txt" type="text" maxlength="24" autocomplete="off" placeholder="Prénom"></label>
       <button class="btn" data-act="firstprofile">Commencer</button>
-    </section>`;
+    </section>
+    ${DISCLAIMER}
+    <p class="hint">Un problème, une idée ? ${feedbackLink('Écris-le sur GitHub')} (un compte GitHub est nécessaire).</p>`;
 }
 function firstProfile() {
   const name = cleanName($('#firstName') && $('#firstName').value);
@@ -601,6 +626,7 @@ document.addEventListener('click', e => {
   const act = el.dataset.act, v = el.dataset.v;
   unlockAudio();                                      // Chrome n'autorise le son qu'après un toucher
   if (act === 'tgt') { const d = parseFloat(v), t = S.target ? Math.round((S.target + d) * 100) / 100 : (d > 0 ? 0.6 : null); S.target = t == null || t < 0.1 ? null : Math.min(2, t); db.last.target = S.target; store.save(db); renderSeance(); }
+  else if (act === 'copylink') { (navigator.clipboard ? navigator.clipboard.writeText(location.href.split('#')[0]) : Promise.reject()).then(() => toast('Lien copié : colle-le dans Chrome ou Safari.'), () => toast(location.href)); }
   else if (act === 'firstprofile') firstProfile();
   else if (act === 'guide') { S.tab = 'guide'; render(); window.scrollTo(0, 0); }
   else if (act === 'guidehide') { db.settings.guideSeen = true; store.save(db); S.tab = 'seance'; render(); }
