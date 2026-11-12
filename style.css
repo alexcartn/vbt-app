@@ -202,3 +202,8 @@ body.has-dock #update { bottom: calc(148px + env(safe-area-inset-bottom)); }
 .empty .emptyh { font: 800 var(--t-lead)/1.1 var(--display); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: var(--space-xs); color: var(--ink); }
 .empty p { color: var(--ink-2); }
 label .sub { display: block; text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--ink-3); font-size: var(--t-label); }
+
+/* démo */
+#demoBar { position: sticky; top: 0; z-index: 7; display: flex; align-items: center; justify-content: space-between; gap: var(--space-md); padding: var(--space-sm) var(--space-md); padding-top: calc(var(--space-sm) + env(safe-area-inset-top)); background: var(--ink); color: var(--paper); font-size: var(--t-label); font-weight: 600; }
+#demoBar .link { color: var(--paper); white-space: nowrap; }
+body.demo #toast { top: calc(56px + env(safe-area-inset-top)); }
