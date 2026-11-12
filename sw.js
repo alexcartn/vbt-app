@@ -1,8 +1,10 @@
 // Service worker : l'app reste utilisable hors ligne (utile en salle), sans jamais servir une version périmée si le réseau répond.
-const CACHE = 'vbt-v10';
+const CACHE = 'vbt-v11';
 const SHELL = ['./', 'index.html', 'style.css', 'manifest.webmanifest', 'js/app.js', 'js/signal.js', 'js/ble.js', 'js/phone.js', 'phone-test.html', 'js/sim.js', 'js/profile.js', 'js/store.js', 'js/feedback.js', 'js/audio.js', 'js/history.js', 'icons/icon-192.png', 'icons/icon-512.png', 'fonts/big-shoulders-800.woff2', 'fonts/hanken-grotesk.woff2'];
 
-self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
+self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL))); });
+// la nouvelle version attend que l'utilisateur touche « Recharger » dans l'app
+self.addEventListener('message', e => { if (e.data === 'SKIP_WAITING') self.skipWaiting(); });
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim()));
 });

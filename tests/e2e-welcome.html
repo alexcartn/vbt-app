@@ -1,0 +1,27 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../style.css"></head><body>
+<div id="app"></div><nav id="nav"><button data-v="seance" class="on">Séance</button><button data-v="profil">1RM</button><button data-v="histo">Historique</button></nav><div id="toast"></div>
+<pre id="result">en cours</pre>
+<script>const errors = []; window.addEventListener('error', e => errors.push(e.message)); localStorage.clear();</script>
+<script type="module">
+// Premier lancement : pas de profil par défaut, écran d'accueil avec explication des données, création du premier profil.
+import '../js/app.js';
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const $ = s => document.querySelector(s);
+const db = () => JSON.parse(localStorage.getItem('vbt.v1'));
+const r = { errors };
+await wait(200);
+r.welcome = !!$('#firstName');
+r.mentionsNoAccount = $('#app').textContent.includes('pas de compte');
+r.navHidden = getComputedStyle($('#nav')).display === 'none';
+r.nothingStored = db() === null;
+$('[data-act=firstprofile]').click(); await wait(50);
+r.emptyRejected = !!$('#firstName') && $('#toast').textContent.includes('prénom');
+$('#firstName').value = 'Camille'; $('[data-act=firstprofile]').click(); await wait(100);
+r.profile = db().profiles.map(p => p.name);
+r.active = db().activeProfile === db().profiles[0].id;
+r.seanceShown = !!$('[data-act=start], [data-act=connect-phone]') && !$('#firstName');
+r.navShown = getComputedStyle($('#nav')).display !== 'none';
+r.header = $('.who select')?.selectedOptions[0].textContent;
+$('#result').textContent = JSON.stringify(r, null, 1);
+</script></body></html>

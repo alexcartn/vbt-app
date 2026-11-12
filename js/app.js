@@ -377,6 +377,11 @@ function renderGuide() {
       <li>Le 1RM estimé sert à doser la charge du jour. Ce n'est pas un poids à tenter, surtout au deadlift.</li>
       <li>La vitesse minimale par défaut est une moyenne. Après une rep réussie à l'échec, touche « Définir comme vitesse minimale » pour utiliser la tienne.</li>
     </ul>`)}
+    ${sec('Tes données', `<ul>
+      <li>Pas de compte : tout est enregistré sur ce téléphone, dans le navigateur, et rien n'est envoyé sur internet.</li>
+      <li>Effacer les données du site ou changer de téléphone fait tout perdre. Exporte l'historique (onglet Historique) pour en garder une copie.</li>
+      <li>Plusieurs personnes peuvent partager le téléphone avec des profils séparés (sélecteur Profil en haut de la séance).</li>
+    </ul>`)}
     ${sec('Pour des mesures fiables', `<ul>
       <li>Reste immobile pendant le calibrage, et attends que l'indicateur en haut passe au vert.</li>
       <li>Marque une pause d'environ une seconde entre les reps : c'est ainsi que l'app sépare chaque rep.</li>
@@ -385,6 +390,31 @@ function renderGuide() {
       <li>Chrome sur Android donne environ 60 mesures par seconde : très bien pour la vitesse moyenne, moins pour le pic.</li>
     </ul>`)}
     <button class="btn" data-act="guidehide">${db.settings.guideSeen ? 'Retour à la séance' : "Compris, c'est parti"}</button>`;
+}
+
+
+// ---------- premier lancement : choix du profil et explication des données ----------
+function renderWelcome() {
+  $('#app').innerHTML = `
+    <header class="top"><h1>VBT</h1></header>
+    <p class="lead">Mesure la vitesse de ta barre avec le capteur de ton téléphone, pour doser ta charge et suivre ta progression.</p>
+    <section class="guide"><h2 class="cap">Tes données restent chez toi</h2><ul>
+      <li>Il n'y a pas de compte et rien n'est envoyé sur internet.</li>
+      <li>Tes séries sont enregistrées uniquement sur ce téléphone, dans le navigateur.</li>
+      <li>Si tu effaces les données du site ou si tu changes de téléphone, elles sont perdues. L'historique peut s'exporter en fichier pour en garder une copie.</li>
+      <li>Plusieurs personnes peuvent utiliser le même téléphone avec des profils séparés.</li>
+    </ul></section>
+    <section class="guide"><h2 class="cap">Pour commencer</h2>
+      <label class="field"><span class="cap">Ton prénom ou un pseudo</span><input id="firstName" class="txt" type="text" maxlength="24" autocomplete="off" placeholder="Prénom"></label>
+      <button class="btn" data-act="firstprofile">Commencer</button>
+    </section>`;
+}
+function firstProfile() {
+  const name = cleanName($('#firstName') && $('#firstName').value);
+  if (!name) { toast('Entre un prénom ou un pseudo.'); return; }
+  const p = { id: store.newId(), name, mvt: { ...MVT_DEFAULT }, mvtCustom: {} };
+  db.profiles.push(p); db.activeProfile = p.id; store.save(db);
+  S.tab = 'seance'; render();
 }
 
 // ---------- profils ----------
@@ -556,6 +586,8 @@ function histoPersist() {
 }
 
 function render() {
+  document.body.classList.toggle('welcome', !db.profiles.length);
+  if (!db.profiles.length) return renderWelcome();
   document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('on', b.dataset.v === S.tab));
   ({ seance: renderSeance, profil: renderProfil, histo: renderHisto, guide: renderGuide })[S.tab]();
 }
@@ -569,6 +601,7 @@ document.addEventListener('click', e => {
   const act = el.dataset.act, v = el.dataset.v;
   unlockAudio();                                      // Chrome n'autorise le son qu'après un toucher
   if (act === 'tgt') { const d = parseFloat(v), t = S.target ? Math.round((S.target + d) * 100) / 100 : (d > 0 ? 0.6 : null); S.target = t == null || t < 0.1 ? null : Math.min(2, t); db.last.target = S.target; store.save(db); renderSeance(); }
+  else if (act === 'firstprofile') firstProfile();
   else if (act === 'guide') { S.tab = 'guide'; render(); window.scrollTo(0, 0); }
   else if (act === 'guidehide') { db.settings.guideSeen = true; store.save(db); S.tab = 'seance'; render(); }
   else if (act === 'manual') { addManualSet(); renderSeance(); }
@@ -602,6 +635,7 @@ document.addEventListener('click', e => {
   else if (act === 'pren') renameProfile(el.dataset.id);
   else if (act === 'pdel') deleteProfile(el.dataset.id);
 });
+document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'firstName') firstProfile(); });
 document.addEventListener('toggle', e => { if (e.target.id === 'optsBox') S.optsOpen = e.target.open; else if (e.target.id === 'moreBox') S.moreOpen = e.target.open; }, true);
 
 document.addEventListener('change', e => {
@@ -620,4 +654,25 @@ document.addEventListener('change', e => {
 $('#nav').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { S.tab = b.dataset.v; render(); } });
 
 render();
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => { /* hors-ligne indisponible, sans gravité */ });
+// ---------- mise à jour de l'app ----------
+function showUpdate(worker) {
+  if ($('#update')) return;
+  const bar = document.createElement('div');
+  bar.id = 'update'; bar.setAttribute('role', 'status');
+  bar.innerHTML = '<span>Nouvelle version disponible</span><button class="btn sm" type="button">Recharger</button>';
+  bar.querySelector('button').onclick = () => {
+    if (S.recording && !confirm('Une série est en cours : la recharger la perdrait. Recharger quand même ?')) return;
+    reloading = true; worker.postMessage('SKIP_WAITING');
+  };
+  document.body.appendChild(bar);
+}
+let reloading = false;
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (reloading) location.reload(); });
+  navigator.serviceWorker.register('sw.js').then(reg => {
+    const watch = w => w.addEventListener('statechange', () => { if (w.state === 'installed' && navigator.serviceWorker.controller) showUpdate(w); });
+    if (reg.waiting && navigator.serviceWorker.controller) showUpdate(reg.waiting);
+    reg.addEventListener('updatefound', () => reg.installing && watch(reg.installing));
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update().catch(() => {}); });
+  }).catch(() => { /* hors-ligne indisponible, sans gravité */ });
+}

@@ -19,7 +19,7 @@ vitesse par rep, profil charge-vitesse et 1RM estimé du jour, historique.
 
 ## Profils et historique
 
-- Profils : « Alexandre » par défaut, création depuis le sélecteur en haut des écrans, une série est enregistrée au nom du profil actif ; la vitesse minimale (1RM) est propre à chaque profil
+- Profils : aucun par défaut, le premier est demandé au premier lancement (écran d'accueil qui explique que les données restent sur le téléphone, sans compte) ; les anciennes données sans profil sont rattachées à un profil « Alexandre » ; création depuis le sélecteur en haut des écrans, une série est enregistrée au nom du profil actif ; la vitesse minimale (1RM) est propre à chaque profil
 - Historique (`js/history.js`) : par exercice et par profil, courbe de progression (1RM estimé du jour, ou meilleure vitesse à une charge choisie), séances du jour avec volume, détail d'une série (reps, barres, courbe de rep, correction), déplacement d'une série vers un autre profil
 - Un profil ne se supprime que s'il n'a plus de série ; l'onglet « 1RM » (ex-« Profil ») montre le profil charge-vitesse du jour
 - Tests : `node tests/history.test.mjs` ; scénario navigateur : `tests/e2e-profiles.html`
@@ -54,3 +54,9 @@ Vérifié dans des résumés et extraits d'articles, un seul lu en détail :
 - Le repli iOS (`devicemotion`) n'est pas testé sur un vrai appareil
 - Le téléphone sur la barre n'est plus visible : compte sur les bips (réglage « Son »)
 - Pas de validation sur barre réelle : comparer avec le MetaMotion sur les mêmes séries avant de se fier aux valeurs
+
+## Mise à jour et premier lancement
+
+- Une nouvelle version (service worker) attend que l'utilisateur touche « Recharger » dans le bandeau ; le contrôle se fait à chaque retour sur l'app ; une série en cours demande une confirmation
+- Pensez à changer le nom du cache dans `sw.js` (`vbt-vN`) à chaque version publiée, sinon aucun bandeau n'apparaît
+- Tests navigateur : `tests/e2e-welcome.html` (premier profil)

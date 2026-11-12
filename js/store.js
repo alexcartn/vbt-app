@@ -19,11 +19,13 @@ export const newId = () => Date.now().toString(36) + Math.random().toString(36).
 /** Remet des données de n'importe quelle version au format courant : profils, vitesse minimale par profil, série -> profil. */
 export function normalize(d) {
   const db = { ...empty(), ...d, mvt: { ...MVT_DEFAULT, ...(d.mvt || {}) }, settings: { ...SETTINGS_DEFAULT, ...(d.settings || {}) } };
-  if (!Array.isArray(db.profiles) || !db.profiles.length) db.profiles = [{ id: 'p1', name: DEFAULT_PROFILE_NAME, mvt: { ...db.mvt }, mvtCustom: {} }];
+  if (!Array.isArray(db.profiles)) db.profiles = [];
+  // données d'avant les profils : on les rattache à un profil (« Alexandre »). Sans aucune donnée : aucun profil, l'app le demande au premier lancement.
+  if (!db.profiles.length && db.sets.length) db.profiles = [{ id: 'p1', name: DEFAULT_PROFILE_NAME, mvt: { ...db.mvt }, mvtCustom: {} }];
   delete db.settings.voice;                               // la voix a été retirée
   db.profiles = db.profiles.map(p => ({ ...p, mvt: { ...MVT_DEFAULT, ...(p.mvt || {}) }, mvtCustom: { ...(p.mvtCustom || {}) } }));   // mvtCustom : vitesse minimale individualisée, par exercice
-  if (!db.profiles.some(p => p.id === db.activeProfile)) db.activeProfile = db.profiles[0].id;
-  db.sets = db.sets.map(s => (db.profiles.some(p => p.id === s.profileId) ? s : { ...s, profileId: db.profiles[0].id }));
+  if (!db.profiles.some(p => p.id === db.activeProfile)) db.activeProfile = db.profiles.length ? db.profiles[0].id : null;
+  if (db.profiles.length) db.sets = db.sets.map(s => (db.profiles.some(p => p.id === s.profileId) ? s : { ...s, profileId: db.profiles[0].id }));
   return db;
 }
 
