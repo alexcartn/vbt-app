@@ -9,6 +9,9 @@ const scenarios = [
   { name: 'biais accéléro 0,02 g', opts: { biasG: 0.02 } },
   { name: 'bruit élevé (0,015 g)', opts: { noiseG: 0.015 } },
   { name: 'inclinaison 25° + oscillation 5°', opts: { tiltDeg: 25, swingDeg: 5 } },
+  { name: 'téléphone 60 Hz', opts: { dt: 1 / 60 }, hz: 60 },
+  { name: 'téléphone 60 Hz, bruit élevé, oscillation', opts: { dt: 1 / 60, noiseG: 0.015, noiseDps: 0.5, swingDeg: 3, tiltDeg: 15 }, hz: 60 },
+  { name: 'téléphone 50 Hz', opts: { dt: 1 / 50 }, hz: 50 },
   { name: 'charge lourde, lente (0,25 m/s)', opts: {}, reps: [{ mcv: 0.28, dur: 1.9 }, { mcv: 0.25, dur: 2.1 }] },
 ];
 
@@ -17,6 +20,7 @@ for (const sc of scenarios) {
   const reps = sc.reps || REPS;
   const sim = generateSet({ reps, ...sc.opts });
   const t = new Tracker();
+  if (sc.hz) t.setDt(1 / sc.hz);
   const found = [];
   for (let i = 0; i < sim.acc.length; i++) found.push(...t.push(sim.acc[i], sim.gyro[i]));
   found.push(...t.flush());

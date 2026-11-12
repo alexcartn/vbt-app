@@ -38,10 +38,20 @@ const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a
 export class Tracker {
   constructor(opts = {}) {
     this.o = { ...DEFAULTS, ...opts };
+    this.base = { quietWindow: this.o.quietWindow, quietLong: this.o.quietLong, calibSamples: this.o.calibSamples, preN: 40 };   // réglés pour 100 Hz
+    this.o.preN = 40;
     this.reset();
   }
 
-  setDt(dt) { this.o.dt = dt; }
+  /** Fréquence réelle du capteur : les durées exprimées en échantillons (immobilité, calibrage) sont ramenées à la même durée en secondes. */
+  setDt(dt) {
+    const k = 0.01 / dt, o = this.o, b = this.base;
+    o.dt = dt;
+    o.quietWindow = Math.max(3, Math.round(b.quietWindow * k));
+    o.quietLong = Math.max(10, Math.round(b.quietLong * k));
+    o.calibSamples = Math.max(15, Math.round(b.calibSamples * k));
+    o.preN = Math.max(10, Math.round(b.preN * k));
+  }
 
   reset() {
     this.state = 'calib';   // 'calib' -> 'idle' <-> 'moving'
@@ -82,7 +92,7 @@ export class Tracker {
 
     if (this.state === 'idle') {
       this.pre.push(aVert);
-      if (this.pre.length > 40) this.pre.shift();
+      if (this.pre.length > o.preN) this.pre.shift();
       if (!quiet) {
         this.state = 'moving';
         this.seg = this.pre.slice();
