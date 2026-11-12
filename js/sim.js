@@ -8,11 +8,11 @@ function rng(seed) {   // mulberry32
 
 /**
  * reps : [{ mcv: vitesse moyenne de la montée en m/s, dur: durée de la montée en s }]
- * Renvoie { acc: [[x,y,z] en g], gyro: [[x,y,z] en °/s], truth: [{mcv, dur}] } à 100 Hz.
+ * Renvoie { acc: [[x,y,z] en g], gyro: [[x,y,z] en °/s], truth: [{mcv, dur}] } à 100 Hz par défaut (option dt).
  * Le capteur est incliné de tiltDeg par rapport à la verticale, et peut osciller de swingDeg pendant la série.
  */
-export function generateSet({ reps, restS = 1.2, pauseS = 0.8, eccS = 1.3, tiltDeg = 4, swingDeg = 0, noiseG = 0.01, biasG = 0, noiseDps = 0.3, seed = 1 }) {
-  const dt = 0.01, rand = rng(seed);
+export function generateSet({ reps, restS = 1.2, pauseS = 0.8, eccS = 1.3, tiltDeg = 4, swingDeg = 0, noiseG = 0.01, biasG = 0, noiseDps = 0.3, seed = 1, dt = 0.01 }) {
+  const rand = rng(seed);
   const gauss = () => Math.sqrt(-2 * Math.log(rand() + 1e-12)) * Math.cos(2 * Math.PI * rand());
   const v = [];                       // vitesse verticale vraie (m/s)
   const zeros = s => { for (let i = 0; i < Math.round(s / dt); i++) v.push(0); };

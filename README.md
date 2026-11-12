@@ -45,3 +45,12 @@ Vérifié dans des résumés et extraits d'articles, un seul lu en détail :
 - Records par nombre de reps (1RM à 5RM, reps valides, séries sans capteur comprises) dans l'Historique
 - « Série sans capteur » : charge et nombre de reps saisis à la main ; comptée dans le volume et les records, pas dans le profil charge-vitesse
 - Tests : `repMaxes`, `repCount`, `targetDelta`, `mvtNote` ; scénario navigateur `tests/e2e-features.html`
+
+## Téléphone comme capteur
+
+- Bouton « Utiliser le téléphone » : accéléromètre et gyroscope du téléphone (`js/phone.js`, Generic Sensor API sur Chrome Android, repli `devicemotion`), mêmes calculs que le MetaMotion
+- Fréquence mesurée sur un Android : 60 Hz (plafond de Chrome). Les durées en échantillons du calcul (immobilité, calibrage) sont ramenées à la même durée en secondes (`Tracker.setDt`) ; tests simulés à 60 et 50 Hz dans `tests/signal.test.mjs`
+- `phone-test.html` (et `dist/phone-test-standalone.html`) : mesure de la fréquence et de la gigue des capteurs
+- Le repli iOS (`devicemotion`) n'est pas testé sur un vrai appareil
+- Le téléphone sur la barre n'est plus visible : compte sur les bips (réglage « Son »)
+- Pas de validation sur barre réelle : comparer avec le MetaMotion sur les mêmes séries avant de se fier aux valeurs

@@ -175,7 +175,8 @@ async function connect(kind = 'ble') {
     onStatus: (t, ok) => { S.msg = t; connected = ok; renderStatus(); renderSeance(); },
     onDisconnect: () => { connected = false; keepAwake(false); S.msg = 'Déconnecté'; renderStatus(); renderSeance(); toast('Capteur déconnecté'); }
   });
-  tracker.reset(); lastState = 'calib'; S.rate = { n: 0, t0: 0 };
+  tracker.reset(); lastState = 'calib'; S.rate = { n: 0, t0: 0 }; S.hz = 0;
+  tracker.setDt(phone ? 1 / 60 : 0.01);               // le téléphone échantillonne à ~60 Hz ; la fréquence réelle est mesurée ensuite
   try { await sensor.connect(); keepAwake(true); toast(phone ? 'Téléphone prêt. Pose-le immobile sur la barre 1 s pour le calibrage.' : 'Connecté. Pose le capteur immobile 1 s pour le calibrage.'); }
   catch (e) { connected = false; S.msg = 'Échec : ' + e.message; renderStatus(); renderSeance(); }
 }
