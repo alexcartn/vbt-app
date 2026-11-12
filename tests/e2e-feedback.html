@@ -3,6 +3,7 @@
 <div id="app"></div><nav id="nav"><button data-v="seance" class="on">Séance</button><button data-v="profil">Profil</button><button data-v="histo">Historique</button></nav><div id="toast"></div>
 <pre id="result">en cours</pre>
 <script>const errors = []; window.addEventListener('error', e => errors.push(e.message));</script>
+<script>localStorage.setItem('vbt.v1', JSON.stringify({ sets: [], profiles: [{ id: 'p1', name: 'Alexandre', mvt: {}, mvtCustom: {} }], activeProfile: 'p1' }));</script>
 <script type="module">
 // Scénario de bout en bout (simulation) : perte de vitesse, alerte d'arrêt, correction des reps, exports.
 // Lancer : python -m http.server puis ouvrir tests/e2e-feedback.html (ou Edge/Chrome headless --dump-dom).
