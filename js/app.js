@@ -270,8 +270,9 @@ function detailHtml(reps = S.reps, selected = S.selected, acts = ['fail', 'delre
       <div><dt>Moyenne</dt><dd>${fmt(r.mcv)}<small>m/s</small></dd></div>
       <div><dt>Pic</dt><dd>${fmt(r.peak)}<small>m/s</small></dd></div>
       <div><dt>Durée</dt><dd>${fmt(r.dur, 1)}<small>s</small></dd></div>
-      ${db.settings.showRom ? `<div><dt>Amplitude à valider</dt><dd>${Math.round(r.rom * 100)}<small>cm</small></dd></div>` : `<div><dt>Écart à la meilleure</dt><dd>${gap > 0 ? '−' : ''}${gap}<small>%</small></dd></div>`}
+      ${db.settings.showRom ? `<div><dt>Amplitude</dt><dd>${Math.round(r.rom * 100)}<small>cm</small></dd></div>` : `<div><dt>Écart</dt><dd>${gap > 0 ? '−' : ''}${gap}<small>%</small></dd></div>`}
     </dl>
+    ${db.settings.showRom ? '<p class="hint">Amplitude non validée : à vérifier au mètre.</p>' : ''}
     <div class="repedit">
       <button class="btn alt sm" data-act="${acts[0]}">${r.failed ? 'Rep valide' : 'Rep ratée'}</button>
       <button class="btn alt sm" data-act="${acts[1]}">Supprimer</button>
@@ -310,17 +311,17 @@ function renderSeance() {
     : `<p class="delta quiet">${S.recording ? 'En attente de la première rep' : 'Règle la charge, puis démarre la série.'}</p>`)
     + (last && S.target ? (td => `<p class="delta">Cible ${fmt(S.target)} m/s : ${td.text} ${td.met ? '(atteinte)' : '(non atteinte)'}</p>`)(targetDelta(last.mcv, S.target)) : '')
     + (stop ? `<p class="stopbar" role="alert">Perte de ${loss} % : arrête la série</p>` : '');
+  const dock = S.recording ? `<button class="btn" data-act="end">Terminer la série</button>`
+    : (connected || simTimer) ? `<button class="btn" data-act="start">Démarrer la série</button>` : '';
   const actions = `
-    <div class="actions${S.recording ? ' sticky' : ''}">
-      ${!connected && !simTimer ? `<div class="connect${bleSupported() ? '' : ' solo'}"><button class="btn sm" data-act="connect-phone">Utiliser le téléphone</button>${bleSupported() ? '<button class="btn sm alt" data-act="connect">MetaMotion</button>' : ''}</div>` : ''}
-      ${(connected || simTimer) && !S.recording ? `<button class="btn" data-act="start">Démarrer la série</button>` : ''}
-      ${S.recording ? `<button class="btn" data-act="end">Terminer la série</button>` : ''}
-      ${!S.recording ? `<details class="more" id="moreBox"${S.moreOpen ? ' open' : ''}><summary class="cap">Plus</summary>
-        ${!connected && !simTimer ? `<button class="btn alt" data-act="sim">Simuler une série</button>` : ''}
+    <div class="actions">
+      ${!connected && !simTimer ? `<div class="connect${bleSupported() ? '' : ' solo'}"><button class="btn sm" data-act="connect-phone">Utiliser le téléphone</button>${bleSupported() ? '<button class="btn sm alt" data-act="connect">MetaMotion</button>' : ''}</div>
+        <button class="btn sm ghost" data-act="sim">Essayer avec une série simulée</button>` : ''}
+      <details class="more" id="moreBox"${S.moreOpen ? ' open' : ''}><summary class="cap">Autres actions</summary>
         <button class="btn alt" data-act="manual">Série sans capteur</button>
         ${S.raw.length > 50 ? `<button class="btn alt" data-act="exportraw">Exporter les données brutes (CSV)</button>` : ''}
         ${connected ? `<button class="btn alt" data-act="disconnect">Déconnecter</button>` : ''}
-      </details>` : ''}
+      </details>
     </div>`;
   $('#app').innerHTML = `
     <header class="top"><span id="chip" class="chip"></span>${S.recording ? `<span class="ctx">${esc(prof().name)} · ${EXERCISES[S.exercise]} · ${kg(S.load)} kg</span>` : whoBar()}</header>
@@ -336,7 +337,8 @@ function renderSeance() {
     </section>
     <section class="reps"><h2 class="cap">Reps${S.reps.length ? ' · touche une barre pour le détail' : ''}</h2>${barsSvg()}</section>
     ${detailHtml()}
-    ${S.recording ? actions : ''}`;
+    ${dock ? `<div class="dock">${dock}</div>` : ''}`;
+  document.body.classList.toggle('has-dock', !!dock);
   renderStatus();
 }
 
@@ -430,16 +432,18 @@ function renderWelcome() {
     <section class="guide"><h2 class="cap">Pour commencer</h2>
       <label class="field"><span class="cap">Ton prénom ou un pseudo</span><input id="firstName" class="txt" type="text" maxlength="24" autocomplete="off" placeholder="Prénom"></label>
       <button class="btn" data-act="firstprofile">Commencer</button>
+      <button class="btn alt" data-act="firstdemo">Essayer avec une série simulée</button>
     </section>
     ${DISCLAIMER}
     <p class="hint">Un problème, une idée ? ${feedbackLink('Écris-le sur GitHub')} (un compte GitHub est nécessaire).</p>`;
 }
-function firstProfile() {
-  const name = cleanName($('#firstName') && $('#firstName').value);
-  if (!name) { toast('Entre un prénom ou un pseudo.'); return; }
+function firstProfile(demo = false) {
+  const name = cleanName($('#firstName') && $('#firstName').value) || (demo && !($('#firstName') && $('#firstName').value.trim()) ? 'Invité' : null);
+  if (!name) { if (!demo) toast('Entre un prénom ou un pseudo.'); return; }
   const p = { id: store.newId(), name, mvt: { ...MVT_DEFAULT }, mvtCustom: {} };
   db.profiles.push(p); db.activeProfile = p.id; store.save(db);
   S.tab = 'seance'; render();
+  if (demo) simulate();
 }
 
 // ---------- profils ----------
@@ -504,16 +508,16 @@ function renderProfil() {
   if (!pts.length) body = `<p class="empty">Aucune série aujourd'hui pour ce mouvement. Fais une montée en charge dans l'onglet Séance : 3 ou 4 charges, 1 ou 2 reps rapides chacune.</p>`;
   else {
     const sug = fit.ok ? [0.9, 0.75, 0.6, 0.5, 0.4].map(v => ({ v, l: loadForVelocity(fit, v) })).filter(x => x.l > 0 && x.l < fit.e1rm) : [];
-    body = (fit.ok ? `<section class="reading"><p class="cap">1RM estimé du jour · ${EXERCISES[ex]}</p><p class="num">${kg(fit.e1rm)}<span class="unit">kg</span></p><p class="delta quiet">${pts.length} charge${pts.length > 1 ? 's' : ''} · R² ${fmt(fit.r2)}</p><p class="hint">Estimation indicative : elle sert à doser la charge du jour, pas à choisir un poids à tenter.</p></section>` : `<p class="note"><strong>Pas d'estimation.</strong> ${fit.reason}</p>`) +
-      `<section class="block"><h2 class="cap">Charge et vitesse</h2>${profileSvg(pts, fit, mvt)}</section>` +
-      (fit.ok && fit.warnings.length ? fit.warnings.map(w => `<p class="note"><strong>Attention.</strong> ${w}</p>`).join('') : '') +
+    body = (fit.ok ? `<section class="reading"><p class="cap">1RM estimé du jour · ${EXERCISES[ex]}</p><p class="num">${kg(fit.e1rm)}<span class="unit">kg</span></p><p class="delta quiet">${pts.length} charge${pts.length > 1 ? 's' : ''} · R² ${fmt(fit.r2)}</p><p class="hint">Estimation indicative : elle sert à doser la charge du jour, pas à choisir un poids à tenter.</p></section>` : `<section class="empty"><h2 class="emptyh">1RM pas encore calculable</h2><p>Fais une série avec une autre charge : il faut au moins 2 charges différentes aujourd'hui, idéalement 3 ou plus, de légère à lourde.</p></section>`) +
+      (pts.length > 1 ? `<section class="block"><h2 class="cap">Charge et vitesse</h2>${profileSvg(pts, fit, mvt)}</section>` : '') +
+      (fit.ok && fit.warnings.length ? fit.warnings.map(w => `<p class="note alert"><strong>Attention.</strong> ${w}</p>`).join('') : '') +
       (sug.length ? `<section class="block"><h2 class="cap">Charge pour une vitesse cible</h2><table>${sug.map(x => `<tr><td>${fmt(x.v)} m/s</td><td>${kg(Math.round(x.l / 2.5) * 2.5)} kg</td></tr>`).join('')}</table></section>` : '');
   }
-  $('#app').innerHTML = `<header class="top"><h1>1RM du jour</h1>${whoBar()}</header>
+  $('#app').innerHTML = `<header class="top"><h1>1RM</h1>${whoBar()}</header>
     <div class="ex" role="group" aria-label="Mouvement">${Object.entries(EXERCISES).map(([k, n]) => `<button data-act="ex" data-v="${k}" class="${k === ex ? 'on' : ''}" aria-pressed="${k === ex}">${n}</button>`).join('')}</div>
     ${body}
     ${mvtNote(ex, prof().mvtCustom[ex]) ? `<p class="note"><strong>Prudence.</strong> ${mvtNote(ex, prof().mvtCustom[ex])}</p>` : ''}
-    <section class="block"><div class="setting"><label class="cap" for="mvtIn">Vitesse minimale${prof().mvtCustom[ex] ? ' (la tienne)' : ' (par défaut)'}<br>(dernière rep réussie)</label><input id="mvtIn" type="number" step="0.01" inputmode="decimal" value="${mvt}"></div>
+    <section class="block"><div class="setting"><label class="cap" for="mvtIn">Vitesse minimale<span class="sub">${prof().mvtCustom[ex] ? 'la tienne' : 'valeur par défaut'}</span></label><input id="mvtIn" type="number" step="0.01" inputmode="decimal" value="${mvt}"></div>
       <p class="hint" style="margin-top:8px">Valeurs de départ indicatives : squat 0,30 (valeur générale) · bench 0,17 · deadlift 0,15, non confirmée par la littérature (0,25 relevé pour la barre hexagonale). Le mieux : ta propre vitesse à l'échec, via « Définir comme vitesse minimale » dans le détail d'une rep.</p></section>`;
 }
 
@@ -556,11 +560,11 @@ function renderHistoList() {
       (metric === 'vel' ? `<div class="setting"><label class="cap" for="hLoad">Charge</label><select id="hLoad" class="sel">${loads.map(l => `<option value="${l}"${l === h.load ? ' selected' : ''}>${kg(l)} kg</option>`).join('')}</select></div>` : '') +
       (pts.length ? `<section class="reading"><p class="cap">${metric === 'e1rm' ? '1RM estimé' : `Meilleure vitesse à ${kg(h.load)} kg`} · dernière séance</p>
           <p class="stat">${fv(last.v)}<span class="unit">${unit}</span></p><p class="delta quiet">${delta || (pts.length === 1 ? 'Une seule séance : la courbe se trace à partir de la 2e.' : '')}</p></section>${lineSvg(pts, fv)}${metric === 'e1rm' ? '<p class="hint">Estimation indicative, pas un poids à tenter. Le 1RM du deadlift est le moins fiable.</p>' : ''}`
-        : `<p class="note"><strong>Pas de point.</strong> ${metric === 'e1rm' ? 'Le 1RM estimé demande au moins 2 charges différentes dans une même séance.' : 'Aucune série à cette charge.'}</p>`);
+        : `<section class="empty"><h2 class="emptyh">${metric === 'e1rm' ? 'Pas encore de 1RM estimé' : 'Aucune série à cette charge'}</h2><p>${metric === 'e1rm' ? 'Il faut au moins 2 charges différentes dans une même séance. Fais une montée en charge dans l\'onglet Séance.' : 'Choisis une autre charge ci-dessus.'}</p></section>`);
   }
   const rms = repMaxes(db.sets, ex, p.id);
-  let list = rms.length ? `<section class="block"><h2 class="cap">Records · reps valides, séries sans capteur comprises</h2><div class="hlist">${rms.map(x =>
-    `<button class="hset" data-act="hopen" data-id="${x.setId}"><span><b>${x.n}RM</b><small>${dateShort(store.dayKey(x.t))}${x.v != null ? ` · moy. ${fmt(x.v)} m/s` : ' · sans capteur'}</small></span><span class="hv">${kg(x.load)}<small>kg</small></span></button>`).join('')}</div></section>` : '';
+  let list = rms.length ? `<section class="block"><h2 class="cap">Records · reps valides, séries sans capteur comprises</h2><div class="hlist">${rms.reduce((g, x) => { const l = g[g.length - 1]; if (l && l.setId === x.setId && l.load === x.load) l.hi = x.n; else g.push({ ...x, hi: x.n }); return g; }, []).map(x =>
+    `<button class="hset" data-act="hopen" data-id="${x.setId}"><span><b>${x.hi > x.n ? `${x.n} à ${x.hi}RM` : `${x.n}RM`}</b><small>${dateShort(store.dayKey(x.t))}${x.v != null ? ` · moy. ${fmt(x.v)} m/s` : ' · sans capteur'}</small></span><span class="hv">${kg(x.load)}<small>kg</small></span></button>`).join('')}</div></section>` : '';
   for (const s of [...sess].reverse()) {
     list += `<h2 class="day">${dateLong(s.day)}</h2><p class="cap">${s.e1rm != null ? `1RM du jour ≈ ${kg(s.e1rm)} kg · ` : ''}${s.sets.length} série${s.sets.length > 1 ? 's' : ''} · ${s.nReps} reps · volume ${Math.round(s.volume)} kg</p>`;
     list += `<div class="hlist">` + s.sets.map(x => {
@@ -611,6 +615,7 @@ function histoPersist() {
 }
 
 function render() {
+  document.body.classList.remove('has-dock');
   document.body.classList.toggle('welcome', !db.profiles.length);
   if (!db.profiles.length) return renderWelcome();
   document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('on', b.dataset.v === S.tab));
@@ -618,7 +623,7 @@ function render() {
 }
 
 let toastT;
-function toast(t) { const el = $('#toast'); el.textContent = t; el.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('show'), 3500); }
+function toast(t) { const el = $('#toast'); el.textContent = t; el.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('show'), 3000); }
 
 // ---------- événements ----------
 document.addEventListener('click', e => {
@@ -628,6 +633,7 @@ document.addEventListener('click', e => {
   if (act === 'tgt') { const d = parseFloat(v), t = S.target ? Math.round((S.target + d) * 100) / 100 : (d > 0 ? 0.6 : null); S.target = t == null || t < 0.1 ? null : Math.min(2, t); db.last.target = S.target; store.save(db); renderSeance(); }
   else if (act === 'copylink') { (navigator.clipboard ? navigator.clipboard.writeText(location.href.split('#')[0]) : Promise.reject()).then(() => toast('Lien copié : colle-le dans Chrome ou Safari.'), () => toast(location.href)); }
   else if (act === 'firstprofile') firstProfile();
+  else if (act === 'firstdemo') firstProfile(true);
   else if (act === 'guide') { S.tab = 'guide'; render(); window.scrollTo(0, 0); }
   else if (act === 'guidehide') { db.settings.guideSeen = true; store.save(db); S.tab = 'seance'; render(); }
   else if (act === 'manual') { addManualSet(); renderSeance(); }
