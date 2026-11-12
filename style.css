@@ -187,3 +187,8 @@ body.welcome #nav { display: none; }
 .lead { font-size: var(--t-lead); line-height: 1.4; }
 .txt { min-height: 48px; padding: 0 var(--space-sm); border: 1.5px solid var(--ink); border-radius: 4px; background: var(--paper); color: var(--ink); font: 600 var(--t-lead) var(--text); }
 .field { display: flex; flex-direction: column; gap: var(--space-xs); }
+
+/* avertissements d'environnement, lien de retour */
+.notice { border-inline-start: 4px solid var(--mid); background: oklch(95% 0.04 85); padding: var(--space-md); display: flex; flex-direction: column; gap: var(--space-sm); font-size: var(--t-body); line-height: 1.4; }
+.link { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; font-weight: 600; }
+.connect.solo { grid-template-columns: 1fr; }
