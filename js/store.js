@@ -7,7 +7,8 @@ export const DEFAULT_PROFILE_NAME = 'Alexandre';
 // lossStop : perte de vitesse (0 à 1) qui déclenche l'alerte d'arrêt, 0 = désactivée
 // rest : durée du repos en secondes après une série, 0 = pas de minuteur
 // showRom : affiche l'amplitude (non validée) pour les tests de mesure
-const SETTINGS_DEFAULT = { lossStop: 0.2, sound: true, rest: 0, showRom: false };
+// guideSeen : le guide de démarrage a été lu (ou ignoré)
+const SETTINGS_DEFAULT = { lossStop: 0.2, sound: true, rest: 0, showRom: false, guideSeen: false };
 const empty = () => ({
   sets: [], mvt: { ...MVT_DEFAULT }, last: { exercise: 'squat', load: 60, target: null }, settings: { ...SETTINGS_DEFAULT },
   profiles: [], activeProfile: null
