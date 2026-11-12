@@ -60,3 +60,9 @@ Vérifié dans des résumés et extraits d'articles, un seul lu en détail :
 - Une nouvelle version (service worker) attend que l'utilisateur touche « Recharger » dans le bandeau ; le contrôle se fait à chaque retour sur l'app ; une série en cours demande une confirmation
 - Pensez à changer le nom du cache dans `sw.js` (`vbt-vN`) à chaque version publiée, sinon aucun bandeau n'apparaît
 - Tests navigateur : `tests/e2e-welcome.html` (premier profil)
+
+## Onglets
+
+- Séance : mesurer ; 1RM du jour : profil charge-vitesse de la journée ; Historique : chronologie de toutes les séances (filtre Tout / mouvement), détail et correction d'une série, profils, export ; Stats : évolution du 1RM estimé ou de la vitesse à une charge, estimations de RM (formule d'Epley depuis le dernier 1RM estimé, indicatif) à côté des records réels, meilleure vitesse par charge
+- Le guide n'est plus un onglet : bouton « ? » en haut de chaque écran
+- Démo : `?demo=1` ouvre l'app avec des données d'exemple dans un stockage séparé (`js/demo.js`)

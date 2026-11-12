@@ -1,6 +1,6 @@
 <!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="../style.css"></head><body>
-<div id="app"></div><nav id="nav"><button data-v="seance" class="on">Séance</button><button data-v="profil">1RM</button><button data-v="histo">Historique</button></nav><div id="toast"></div>
+<div id="app"></div><nav id="nav"><button data-v="seance" class="on">Séance</button><button data-v="profil">1RM</button><button data-v="histo">Historique</button><button data-v="stats">Stats</button></nav><div id="toast"></div>
 <pre id="result">en cours</pre>
 <script>
 const errors = []; window.addEventListener('error', e => errors.push(e.message));
@@ -67,11 +67,13 @@ try {
   r.mvtLabel = $('label[for=mvtIn]')?.textContent.replace(/\s+/g, ' ');
   click('[data-act=ex][data-v=squat]'); await wait(30);
 
-  // historique : records et séance manuelle
-  click('#nav button[data-v=histo]'); await wait(50);
-  const rows = $$('.hlist')[0] ? $$('.hlist')[0].querySelectorAll('.hset') : [];
-  r.records = [...rows].map(b => b.querySelector('b').textContent + ' ' + b.querySelector('.hv').textContent.trim());
+  // stats : estimations et records (RM)
+  click('#nav button[data-v=stats]'); await wait(50);
+  const rmRows = $$('table.rm')[0] ? [...$$('table.rm')[0].querySelectorAll('tbody tr')] : [];
+  r.records = rmRows.map(tr => [...tr.children].map(td => td.textContent.trim()).join(' | '));
   r.recordsTitle = $('.block .cap')?.textContent;
+  // historique : séance manuelle
+  click('#nav button[data-v=histo]'); await wait(50);
   const manualRow = $$('.hset').find(b => b.textContent.includes('sans capteur') && b.querySelector('b').textContent.includes('× 8'));
   r.manualRow = manualRow?.textContent.trim();
   manualRow?.click(); await wait(50);

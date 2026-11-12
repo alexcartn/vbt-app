@@ -1,12 +1,13 @@
 <!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="../style.css"></head><body>
-<div id="app"></div><nav id="nav"><button data-v="seance" class="on">Séance</button><button data-v="profil">1RM</button><button data-v="histo">Historique</button></nav><div id="toast"></div>
+<div id="app"></div><nav id="nav"><button data-v="seance" class="on">Séance</button><button data-v="profil">1RM</button><button data-v="histo">Historique</button><button data-v="stats">Stats</button></nav><div id="toast"></div>
 <pre id="result">en cours</pre>
 <script>
 const errors = []; window.addEventListener('error', e => errors.push(e.message));
 localStorage.clear();
 const vibrations = []; navigator.vibrate = p => { vibrations.push(p); return true; };
 </script>
+<script>localStorage.setItem('vbt.v1', JSON.stringify({ sets: [], profiles: [{ id: 'p1', name: 'Alexandre', mvt: {}, mvtCustom: {} }], activeProfile: 'p1' }));</script>
 <script type="module">
 // Scénario du minuteur de repos : réglage, démarrage à la fin de série, fin du repos (horloge avancée), « Passer », annulation au départ d'une série.
 import '../js/app.js';
