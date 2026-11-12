@@ -1,5 +1,6 @@
 import { Tracker } from './signal.js';
 import { Sensor, bleSupported } from './ble.js';
+import { PhoneSensor, phoneSupported } from './phone.js';
 import { generateSet } from './sim.js';
 import * as store from './store.js';
 import { EXERCISES, MVT_DEFAULT, bestPerLoad, fitProfile, loadForVelocity, mvtNote } from './profile.js';
@@ -166,15 +167,16 @@ function exportHistory() {
 }
 
 // ---------- connexion ----------
-async function connect() {
-  if (!bleSupported()) { toast('Web Bluetooth indisponible : utilise Chrome sur Android.'); return; }
-  sensor = new Sensor({
+async function connect(kind = 'ble') {
+  const phone = kind === 'phone';
+  if (phone ? !phoneSupported() : !bleSupported()) { toast(phone ? 'Capteurs du téléphone indisponibles sur ce navigateur.' : 'Web Bluetooth indisponible : utilise Chrome sur Android.'); return; }
+  sensor = new (phone ? PhoneSensor : Sensor)({
     onAcc, onGyro: g => { gyro = g; },
     onStatus: (t, ok) => { S.msg = t; connected = ok; renderStatus(); renderSeance(); },
     onDisconnect: () => { connected = false; keepAwake(false); S.msg = 'Déconnecté'; renderStatus(); renderSeance(); toast('Capteur déconnecté'); }
   });
   tracker.reset(); lastState = 'calib'; S.rate = { n: 0, t0: 0 };
-  try { await sensor.connect(); keepAwake(true); toast('Connecté. Pose le capteur immobile 1 s pour le calibrage.'); }
+  try { await sensor.connect(); keepAwake(true); toast(phone ? 'Téléphone prêt. Pose-le immobile sur la barre 1 s pour le calibrage.' : 'Connecté. Pose le capteur immobile 1 s pour le calibrage.'); }
   catch (e) { connected = false; S.msg = 'Échec : ' + e.message; renderStatus(); renderSeance(); }
 }
 
@@ -315,7 +317,7 @@ function renderSeance() {
     <section class="reps"><h2 class="cap">Reps${S.reps.length ? ' · touche une barre pour le détail' : ''}</h2>${barsSvg()}</section>
     ${detailHtml()}
     <div class="actions${S.recording ? ' sticky' : ''}">
-      ${!connected && !simTimer ? `<button class="btn" data-act="connect">Connecter le capteur</button><button class="btn alt" data-act="sim">Simuler une série</button>` : ''}
+      ${!connected && !simTimer ? `<button class="btn" data-act="connect">Connecter le capteur</button><button class="btn alt" data-act="connect-phone">Utiliser le téléphone</button><button class="btn alt" data-act="sim">Simuler une série</button>` : ''}
       ${(connected || simTimer) && !S.recording ? `<button class="btn" data-act="start">Démarrer la série</button>` : ''}
       ${S.recording ? `<button class="btn" data-act="end">Terminer la série</button>` : ''}
       ${!S.recording ? `<button class="btn alt" data-act="manual">Série sans capteur</button>` : ''}
@@ -522,6 +524,7 @@ document.addEventListener('click', e => {
   else if (act === 'load') { S.load = Math.max(0, S.load + parseFloat(v)); db.last.load = S.load; store.save(db); renderSeance(); }
   else if (act === 'sel') { S.selected = parseInt(el.dataset.i, 10); renderSeance(); }
   else if (act === 'connect') connect();
+  else if (act === 'connect-phone') connect('phone');
   else if (act === 'disconnect') disconnect();
   else if (act === 'start') startSet();
   else if (act === 'end') endSet();
