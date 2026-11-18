@@ -1,1 +1,11 @@
-{"type":"module","private":true}
+{
+  "name": "vbt-app",
+  "version": "1.0.0",
+  "description": "PWA de mesure de vitesse de barre (VBT) avec MetaMotion MMS ou téléphone",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "test": "node tests/signal.test.mjs && node tests/profile.test.mjs && node tests/feedback.test.mjs && node tests/history.test.mjs"
+  }
+}
